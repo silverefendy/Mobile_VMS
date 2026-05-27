@@ -6,12 +6,13 @@ import 'core/auth/auth_controller.dart';
 import 'core/connectivity/connectivity_service.dart';
 import 'core/network/api_client.dart';
 import 'core/storage/secure_session_storage.dart';
+import 'core/qr/qr_validation_service.dart';
 import 'data/repositories/auth_repository_impl.dart';
 import 'data/repositories/menu_repository_impl.dart';
 import 'domain/repositories/auth_repository.dart';
 import 'domain/repositories/menu_repository.dart';
 import 'domain/repositories/operations_repository.dart';
-import 'features/menu/menu_controller.dart';
+import 'features/menu/app_menu_controller.dart';
 import 'data/repositories/operations_repository_impl.dart';
 import 'features/scanner/scan_coordinator.dart';
 import 'features/visitors/visitors_controller.dart';
@@ -43,16 +44,23 @@ void main() {
             apiClient: context.read<ApiClient>(),
           )..restoreSession(),
         ),
-        ChangeNotifierProvider<ScanCoordinator>(create: (context) => ScanCoordinator(context.read<OperationsRepository>())),
+        Provider<QrValidationService>(create: (_) => QrValidationService(activeSecrets: const ['vms-default-rotating-secret-v1'])),
+        ChangeNotifierProvider<ScanCoordinator>(
+          create: (context) => ScanCoordinator(
+            context.read<OperationsRepository>(),
+            context.read<ConnectivityService>(),
+            context.read<QrValidationService>(),
+          ),
+        ),
         ChangeNotifierProvider<VisitorsController>(create: (context) => VisitorsController(context.read<OperationsRepository>())),
         ChangeNotifierProvider<ApprovalsController>(create: (context) => ApprovalsController(context.read<OperationsRepository>())),
         ChangeNotifierProvider<ActivityController>(create: (context) => ActivityController(context.read<OperationsRepository>())),
         ChangeNotifierProvider<SettingsController>(create: (_) => SettingsController()),
         ChangeNotifierProvider<DashboardController>(create: (context) => DashboardController(context.read<MenuRepository>())),
-        ChangeNotifierProxyProvider<AuthController, MenuController>(
-          create: (context) => MenuController(context.read<MenuRepository>()),
+        ChangeNotifierProxyProvider<AuthController, AppMenuController>(
+          create: (context) => AppMenuController(context.read<MenuRepository>()),
           update: (_, auth, menuController) {
-            menuController ??= MenuController(menuRepository);
+            menuController ??= AppMenuController(menuRepository);
             menuController.bindAuth(auth);
             return menuController;
           },
