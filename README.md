@@ -78,3 +78,7 @@ static const String baseUrl = 'https://your-frappe-site.com';
 ## Catatan
 
 Project ini adalah mobile client. Backend tetap berada di repo `visitor_management`.
+
+## Architecture Proposal
+
+See detailed production architecture: `docs/flutter_vms_architecture.md`.
