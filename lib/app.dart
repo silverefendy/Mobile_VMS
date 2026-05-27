@@ -3,10 +3,34 @@ import 'package:provider/provider.dart';
 
 import 'app/app_router.dart';
 import 'core/auth/auth_controller.dart';
+import 'core/lifecycle/app_lifecycle_coordinator.dart';
 import 'core/settings/settings_controller.dart';
 
-class MobileVMSApp extends StatelessWidget {
+class MobileVMSApp extends StatefulWidget {
   const MobileVMSApp({super.key});
+
+  @override
+  State<MobileVMSApp> createState() => _MobileVMSAppState();
+}
+
+class _MobileVMSAppState extends State<MobileVMSApp> {
+  AppLifecycleCoordinator? _lifecycle;
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    _lifecycle?.detach();
+    _lifecycle = AppLifecycleCoordinator(
+      onResume: () => context.read<AuthController>().restoreSession(),
+      onPause: () {},
+    )..attach();
+  }
+
+  @override
+  void dispose() {
+    _lifecycle?.detach();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
