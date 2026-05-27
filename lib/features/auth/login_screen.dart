@@ -16,9 +16,28 @@ class _LoginScreenState extends State<LoginScreen> {
   final _formKey = GlobalKey<FormState>();
   bool _submitting = false;
 
+
+  @override
+  void dispose() {
+    _usernameController.dispose();
+    _passwordController.dispose();
+    super.dispose();
+  }
+
+  Future<void> _submit(BuildContext context) async {
+    if (!_formKey.currentState!.validate()) return;
+    final auth = context.read<AuthController>();
+    setState(() => _submitting = true);
+    final ok = await auth.login(_usernameController.text.trim(), _passwordController.text);
+    if (!mounted) return;
+    setState(() => _submitting = false);
+    if (!ok) {
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(auth.error ?? 'Login failed')));
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
-    final auth = context.watch<AuthController>();
     return Scaffold(
       body: SafeArea(
         child: Center(
@@ -33,28 +52,29 @@ class _LoginScreenState extends State<LoginScreen> {
                   const SizedBox(height: 12),
                   const Text('Mobile VMS', style: TextStyle(fontSize: 28, fontWeight: FontWeight.w700)),
                   const SizedBox(height: 24),
-                  TextFormField(controller: _usernameController, decoration: const InputDecoration(labelText: 'Username')),
+                  TextFormField(
+                    controller: _usernameController,
+                    decoration: const InputDecoration(labelText: 'Username'),
+                    textInputAction: TextInputAction.next,
+                    validator: (value) => (value == null || value.trim().isEmpty) ? 'Username is required' : null,
+                  ),
                   const SizedBox(height: 12),
-                  TextFormField(controller: _passwordController, decoration: const InputDecoration(labelText: 'Password'), obscureText: true),
+                  TextFormField(
+                    controller: _passwordController,
+                    decoration: const InputDecoration(labelText: 'Password'),
+                    obscureText: true,
+                    onFieldSubmitted: (_) => _submit(context),
+                    validator: (value) => (value == null || value.isEmpty) ? 'Password is required' : null,
+                  ),
                   const SizedBox(height: 20),
                   SizedBox(
                     width: double.infinity,
                     height: 52,
                     child: FilledButton(
-                      onPressed: _submitting
-                          ? null
-                          : () async {
-                              if (!_formKey.currentState!.validate()) return;
-                              setState(() => _submitting = true);
-                              final ok = await auth.login(_usernameController.text.trim(), _passwordController.text);
-                              if (mounted) setState(() => _submitting = false);
-                              if (!ok && mounted) {
-                                ScaffoldMessenger.of(context).showSnackBar(
-                                  SnackBar(content: Text(auth.error ?? 'Login failed')),
-                                );
-                              }
-                            },
-                      child: _submitting ? const CircularProgressIndicator() : const Text('Sign In'),
+                      onPressed: _submitting ? null : () => _submit(context),
+                      child: _submitting
+                          ? const SizedBox(width: 24, height: 24, child: CircularProgressIndicator(strokeWidth: 2.4))
+                          : const Text('Sign In'),
                     ),
                   )
                 ]),

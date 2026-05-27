@@ -17,13 +17,15 @@ class _MobileVMSAppState extends State<MobileVMSApp> {
   AppLifecycleCoordinator? _lifecycle;
 
   @override
-  void didChangeDependencies() {
-    super.didChangeDependencies();
-    _lifecycle?.detach();
-    _lifecycle = AppLifecycleCoordinator(
-      onResume: () => context.read<AuthController>().restoreSession(),
-      onPause: () {},
-    )..attach();
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted || _lifecycle != null) return;
+      _lifecycle = AppLifecycleCoordinator(
+        onResume: () => context.read<AuthController>().restoreSession(),
+        onPause: () {},
+      )..attach();
+    });
   }
 
   @override
