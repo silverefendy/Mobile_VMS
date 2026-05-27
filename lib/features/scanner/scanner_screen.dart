@@ -18,7 +18,11 @@ class _ScannerScreenState extends State<ScannerScreen> {
   @override
   void initState() {
     super.initState();
-    WidgetsBinding.instance.addPostFrameCallback((_) => context.read<ScanCoordinator>().setReady());
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final coordinator = context.read<ScanCoordinator>();
+      coordinator.setReady();
+      coordinator.retryPending();
+    });
   }
 
   @override
@@ -44,6 +48,16 @@ class _ScannerScreenState extends State<ScannerScreen> {
             },
           ),
           _Overlay(feedback: scan.feedback, state: scan.state),
+          if (scan.pendingRetryCount > 0)
+            Positioned(
+              bottom: 112,
+              right: 16,
+              child: FilledButton.icon(
+                onPressed: () => scan.retryPending(),
+                icon: const Icon(Icons.sync),
+                label: Text('Retry ${scan.pendingRetryCount}'),
+              ),
+            ),
           Positioned(
             top: 32,
             left: 16,
@@ -87,6 +101,7 @@ class _Overlay extends StatelessWidget {
     Color color = Colors.white;
     if (state == ScanState.success) color = Colors.greenAccent;
     if (state == ScanState.error) color = Colors.redAccent;
+    if (state == ScanState.queued) color = Colors.orangeAccent;
     return Column(
       children: [
         const Spacer(),

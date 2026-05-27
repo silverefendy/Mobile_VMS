@@ -3,6 +3,7 @@ import 'package:provider/provider.dart';
 
 import 'app/app_router.dart';
 import 'core/auth/auth_controller.dart';
+import 'core/lifecycle/app_lifecycle_coordinator.dart';
 import 'core/settings/settings_controller.dart';
 
 class MobileVMSApp extends StatefulWidget {
@@ -12,24 +13,23 @@ class MobileVMSApp extends StatefulWidget {
   State<MobileVMSApp> createState() => _MobileVMSAppState();
 }
 
-class _MobileVMSAppState extends State<MobileVMSApp> with WidgetsBindingObserver {
+class _MobileVMSAppState extends State<MobileVMSApp> {
+  AppLifecycleCoordinator? _lifecycle;
+
   @override
-  void initState() {
-    super.initState();
-    WidgetsBinding.instance.addObserver(this);
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    _lifecycle?.detach();
+    _lifecycle = AppLifecycleCoordinator(
+      onResume: () => context.read<AuthController>().restoreSession(),
+      onPause: () {},
+    )..attach();
   }
 
   @override
   void dispose() {
-    WidgetsBinding.instance.removeObserver(this);
+    _lifecycle?.detach();
     super.dispose();
-  }
-
-  @override
-  void didChangeAppLifecycleState(AppLifecycleState state) {
-    if (state == AppLifecycleState.resumed && mounted) {
-      context.read<AuthController>().restoreSession();
-    }
   }
 
   @override

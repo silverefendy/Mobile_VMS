@@ -4,6 +4,7 @@ import 'dart:collection';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 
+import '../../config/app_config.dart';
 import '../../core/connectivity/connectivity_service.dart';
 import '../../core/logging/app_logger.dart';
 import '../../core/qr/qr_validation_service.dart';
@@ -72,7 +73,7 @@ class ScanCoordinator extends ChangeNotifier {
     feedback = 'Processing...';
     notifyListeners();
 
-    if (!await _connectivityService.isOnline()) {
+    if (AppConfig.enableOfflineQueue && !await _connectivityService.isOnline()) {
       _retryQueue.enqueue(PendingOperation(id: rawCode.hashCode.toString(), payload: {'rawCode': rawCode, 'action': action.name}, createdAt: DateTime.now()));
       state = ScanState.queued;
       feedback = 'Offline - scan queued (${_retryQueue.length})';
@@ -89,7 +90,8 @@ class ScanCoordinator extends ChangeNotifier {
       final op = _retryQueue.dequeue();
       if (op == null) return;
       final actionName = (op.payload['action'] ?? ScanAction.checkIn.name).toString();
-      await _process(op.payload['rawCode'].toString(), ScanAction.values.firstWhere((e) => e.name == actionName));
+      final queuedAction = ScanAction.values.firstWhere((e) => e.name == actionName, orElse: () => ScanAction.checkIn);
+      await _process(op.payload['rawCode'].toString(), queuedAction);
     }
   }
 

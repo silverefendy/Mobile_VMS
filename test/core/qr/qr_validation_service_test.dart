@@ -14,4 +14,13 @@ void main() {
     final svc = QrValidationService(activeSecrets: const [secret]);
     expect(svc.validate(raw).isValid, isTrue);
   });
+
+  test('rejects malformed signed payload safely', () {
+    final svc = QrValidationService(activeSecrets: const ['s1']);
+    final result = svc.validate('vms1.qr.not_base64.invalid');
+    expect(result.isValid, isFalse);
+    expect(result.reason, isNotNull);
+  });
+
 }
+
