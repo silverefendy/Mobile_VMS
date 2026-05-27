@@ -12,7 +12,7 @@ import 'data/repositories/menu_repository_impl.dart';
 import 'domain/repositories/auth_repository.dart';
 import 'domain/repositories/menu_repository.dart';
 import 'domain/repositories/operations_repository.dart';
-import 'features/menu/menu_controller.dart';
+import 'features/menu/app_menu_controller.dart';
 import 'data/repositories/operations_repository_impl.dart';
 import 'features/scanner/scan_coordinator.dart';
 import 'features/visitors/visitors_controller.dart';
@@ -57,10 +57,10 @@ void main() {
         ChangeNotifierProvider<ActivityController>(create: (context) => ActivityController(context.read<OperationsRepository>())),
         ChangeNotifierProvider<SettingsController>(create: (_) => SettingsController()),
         ChangeNotifierProvider<DashboardController>(create: (context) => DashboardController(context.read<MenuRepository>())),
-        ChangeNotifierProxyProvider<AuthController, MenuController>(
-          create: (context) => MenuController(context.read<MenuRepository>()),
+        ChangeNotifierProxyProvider<AuthController, AppMenuController>(
+          create: (context) => AppMenuController(context.read<MenuRepository>()),
           update: (_, auth, menuController) {
-            menuController ??= MenuController(menuRepository);
+            menuController ??= AppMenuController(menuRepository);
             menuController.bindAuth(auth);
             return menuController;
           },
