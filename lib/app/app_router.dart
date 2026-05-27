@@ -7,6 +7,7 @@ import '../features/app_shell/app_shell_screen.dart';
 import '../features/approvals/approvals_screen.dart';
 import '../features/auth/login_screen.dart';
 import '../features/scanner/scanner_screen.dart';
+import '../features/settings/settings_screen.dart';
 import '../features/visitors/visitors_screen.dart';
 
 class AppRouter {
@@ -33,6 +34,7 @@ class AppRouter {
       GoRoute(path: '/visitors', builder: (_, __) => const VisitorsScreen()),
       GoRoute(path: '/approvals', builder: (_, __) => const ApprovalsScreen()),
       GoRoute(path: '/activity', builder: (_, __) => const ActivityScreen()),
+      GoRoute(path: '/settings', builder: (_, __) => const SettingsScreen()),
     ],
   );
 }

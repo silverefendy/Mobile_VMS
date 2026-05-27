@@ -17,6 +17,8 @@ import 'features/scanner/scan_coordinator.dart';
 import 'features/visitors/visitors_controller.dart';
 import 'features/approvals/approvals_controller.dart';
 import 'features/activity/activity_controller.dart';
+import 'core/settings/settings_controller.dart';
+import 'features/dashboard/dashboard_controller.dart';
 
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
@@ -45,6 +47,8 @@ void main() {
         ChangeNotifierProvider<VisitorsController>(create: (context) => VisitorsController(context.read<OperationsRepository>())),
         ChangeNotifierProvider<ApprovalsController>(create: (context) => ApprovalsController(context.read<OperationsRepository>())),
         ChangeNotifierProvider<ActivityController>(create: (context) => ActivityController(context.read<OperationsRepository>())),
+        ChangeNotifierProvider<SettingsController>(create: (_) => SettingsController()),
+        ChangeNotifierProvider<DashboardController>(create: (context) => DashboardController(context.read<MenuRepository>())),
         ChangeNotifierProxyProvider<AuthController, MenuController>(
           create: (context) => MenuController(context.read<MenuRepository>()),
           update: (_, auth, menuController) {
