@@ -6,6 +6,7 @@ import 'core/auth/auth_controller.dart';
 import 'core/connectivity/connectivity_service.dart';
 import 'core/network/api_client.dart';
 import 'core/storage/secure_session_storage.dart';
+import 'core/qr/qr_validation_service.dart';
 import 'data/repositories/auth_repository_impl.dart';
 import 'data/repositories/menu_repository_impl.dart';
 import 'domain/repositories/auth_repository.dart';
@@ -43,7 +44,14 @@ void main() {
             apiClient: context.read<ApiClient>(),
           )..restoreSession(),
         ),
-        ChangeNotifierProvider<ScanCoordinator>(create: (context) => ScanCoordinator(context.read<OperationsRepository>())),
+        Provider<QrValidationService>(create: (_) => QrValidationService(activeSecrets: const ['vms-default-rotating-secret-v1'])),
+        ChangeNotifierProvider<ScanCoordinator>(
+          create: (context) => ScanCoordinator(
+            context.read<OperationsRepository>(),
+            context.read<ConnectivityService>(),
+            context.read<QrValidationService>(),
+          ),
+        ),
         ChangeNotifierProvider<VisitorsController>(create: (context) => VisitorsController(context.read<OperationsRepository>())),
         ChangeNotifierProvider<ApprovalsController>(create: (context) => ApprovalsController(context.read<OperationsRepository>())),
         ChangeNotifierProvider<ActivityController>(create: (context) => ActivityController(context.read<OperationsRepository>())),
