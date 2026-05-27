@@ -4,8 +4,8 @@ import '../../core/auth/auth_controller.dart';
 import '../../domain/models/menu_item.dart';
 import '../../domain/repositories/menu_repository.dart';
 
-class MenuController extends ChangeNotifier {
-  MenuController(this._menuRepository);
+class AppMenuController extends ChangeNotifier {
+  AppMenuController(this._menuRepository);
 
   final MenuRepository _menuRepository;
   List<MenuItem> items = const [];
