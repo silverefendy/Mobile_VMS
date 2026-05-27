@@ -5,14 +5,14 @@ import 'package:provider/provider.dart';
 import '../../core/auth/auth_controller.dart';
 import '../../domain/models/menu_item.dart';
 import '../dashboard/dashboard_section.dart';
-import '../menu/menu_controller.dart';
+import '../menu/app_menu_controller.dart';
 
 class AppShellScreen extends StatelessWidget {
   const AppShellScreen({super.key});
 
   @override
   Widget build(BuildContext context) {
-    final menu = context.watch<MenuController>().items;
+    final menu = context.watch<AppMenuController>().items;
     final auth = context.read<AuthController>();
 
     final grouped = <String, List<MenuItem>>{};
