@@ -10,7 +10,8 @@ class MenuRepositoryImpl implements MenuRepository {
   @override
   Future<List<MenuItem>> fetchMenu() async {
     final response = await _apiClient.get<Map<String, dynamic>>('/api/method/visitor_management.mobile.get_mobile_navigation');
-    final rows = (response.data?['message']?['menu_items'] as List<dynamic>?) ?? [];
+    final msg = response.data?['message'];
+    final rows = (msg is Map<String, dynamic> ? (msg['menu_items'] as List<dynamic>?) : (msg as List<dynamic>?)) ?? [];
 
     return rows
         .map(

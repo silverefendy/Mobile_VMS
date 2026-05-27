@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
 
 import '../../core/auth/auth_controller.dart';
@@ -11,6 +12,8 @@ class AppShellScreen extends StatelessWidget {
   Widget build(BuildContext context) {
     final menu = context.watch<MenuController>().items;
     final auth = context.read<AuthController>();
+    final width = MediaQuery.sizeOf(context).width;
+    final crossAxisCount = width >= 900 ? 4 : width >= 600 ? 3 : 2;
 
     return Scaffold(
       appBar: AppBar(
@@ -21,8 +24,8 @@ class AppShellScreen extends StatelessWidget {
           ? const Center(child: Text('No menu configuration from server.'))
           : GridView.builder(
               padding: const EdgeInsets.all(16),
-              gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                crossAxisCount: 2,
+              gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+                crossAxisCount: crossAxisCount,
                 crossAxisSpacing: 12,
                 mainAxisSpacing: 12,
                 childAspectRatio: 1.7,
@@ -32,7 +35,7 @@ class AppShellScreen extends StatelessWidget {
                 final item = menu[index];
                 return Card(
                   child: InkWell(
-                    onTap: () {},
+                    onTap: () => context.push(item.route),
                     child: Center(child: Text(item.label, textAlign: TextAlign.center, style: const TextStyle(fontSize: 18))),
                   ),
                 );
