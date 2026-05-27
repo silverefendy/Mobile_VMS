@@ -25,13 +25,13 @@ class ApiClient {
             options.headers['Authorization'] = _token;
           }
           if (AppConfig.enableApiLog) {
-            AppLogger.info('REQ ${options.method} ${options.path}');
+            AppLogger.info('api_request', context: {'method': options.method, 'path': options.path});
           }
           handler.next(options);
         },
         onResponse: (response, handler) {
           if (AppConfig.enableApiLog) {
-            AppLogger.info('RES ${response.statusCode} ${response.requestOptions.path}');
+            AppLogger.info('api_response', context: {'status': response.statusCode, 'path': response.requestOptions.path});
           }
           handler.next(response);
         },
@@ -41,7 +41,7 @@ class ApiClient {
             _onUnauthorized?.call();
           }
           if (AppConfig.enableApiLog) {
-            AppLogger.error('ERR ${error.requestOptions.path}', error: error.message);
+            AppLogger.error('api_error', error: error.message, context: {'path': error.requestOptions.path, 'status': status});
           }
           handler.next(error);
         },
