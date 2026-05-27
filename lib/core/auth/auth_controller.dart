@@ -59,6 +59,7 @@ class AuthController extends ChangeNotifier {
   }
 
   Future<void> forceLogout() async {
+    error = null;
     session = null;
     _apiClient.setAuthToken(null);
     status = AuthStatus.unauthenticated;
