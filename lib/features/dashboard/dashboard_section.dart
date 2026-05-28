@@ -12,38 +12,27 @@ class DashboardSection extends StatefulWidget {
 }
 
 class _DashboardSectionState extends State<DashboardSection>
-    with RouteAware {
-  // RouteObserver untuk detect saat halaman kembali ke foreground
-  static final RouteObserver<ModalRoute<void>> _routeObserver =
-      RouteObserver<ModalRoute<void>>();
-
-  /// Panggil observer ini dari MaterialApp jika perlu;
-  /// sebagai alternatif kita pakai WidgetsBindingObserver di sini
+    with WidgetsBindingObserver {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted) context.read<DashboardController>().refresh();
     });
   }
 
   @override
-  void didChangeDependencies() {
-    super.didChangeDependencies();
-    // Re-subscribe setiap kali dependencies berubah (termasuk saat kembali ke layar)
-    _routeObserver.subscribe(this, ModalRoute.of(context)!);
-  }
-
-  @override
   void dispose() {
-    _routeObserver.unsubscribe(this);
+    WidgetsBinding.instance.removeObserver(this);
     super.dispose();
   }
 
-  /// Dipanggil saat halaman ini kembali ke foreground (pop dari halaman lain)
   @override
-  void didPopNext() {
-    context.read<DashboardController>().refresh();
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed && mounted) {
+      context.read<DashboardController>().refresh(force: true);
+    }
   }
 
   @override

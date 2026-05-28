@@ -11,7 +11,8 @@ class DashboardController extends ChangeNotifier {
   String? error;
   List<DashboardCard> cards = const [];
 
-  Future<void> refresh() async {
+  Future<void> refresh({bool force = false}) async {
+    if (loading && !force) return;
     loading = true;
     error = null;
     notifyListeners();
@@ -19,8 +20,9 @@ class DashboardController extends ChangeNotifier {
       cards = await _menuRepository.fetchDashboardCards();
     } catch (e) {
       error = e.toString();
+    } finally {
+      loading = false;
+      notifyListeners();
     }
-    loading = false;
-    notifyListeners();
   }
 }

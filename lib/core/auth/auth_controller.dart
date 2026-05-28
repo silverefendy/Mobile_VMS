@@ -20,14 +20,15 @@ class AuthController extends ChangeNotifier {
   AuthSession? session;
   String? error;
 
-  Future<void> restoreSession() async {
-    status = AuthStatus.booting;
-    notifyListeners();
+  Future<void> restoreSession({bool showBooting = true}) async {
+    if (showBooting) {
+      status = AuthStatus.booting;
+      notifyListeners();
+    }
 
     final existing = await _authRepository.restore();
     if (existing == null) {
-      status = AuthStatus.unauthenticated;
-      notifyListeners();
+      await forceLogout();
       return;
     }
 
@@ -37,11 +38,13 @@ class AuthController extends ChangeNotifier {
       _apiClient.setCsrfToken(existing.authHeader);
     }
     // Token auth (jika pakai API key — opsional)
-    _apiClient.setAuthToken(existing.authHeader.isEmpty ? null : null);
+    _apiClient.setAuthToken(null);
 
     status = AuthStatus.authenticated;
     notifyListeners();
   }
+
+  Future<void> restoreSessionOnResume() => restoreSession(showBooting: false);
 
   Future<bool> login(String username, String password) async {
     error = null;
