@@ -4,11 +4,6 @@ on:
   push:
     branches: [main]
   workflow_dispatch:
-    inputs:
-      flutter_version:
-        description: 'Flutter version (default: stable)'
-        required: false
-        default: 'stable'
 
 jobs:
   build:
@@ -31,8 +26,13 @@ jobs:
           channel: 'stable'
           cache: true
 
-      - name: Show Flutter version
-        run: flutter --version
+      - name: Show Flutter & Java version
+        run: |
+          flutter --version
+          java -version
+
+      - name: Make gradlew executable
+        run: chmod +x android/gradlew
 
       - name: Install dependencies
         run: flutter pub get
@@ -46,6 +46,8 @@ jobs:
             --dart-define=APP_ENV=production \
             --dart-define=ENABLE_API_LOG=false \
             --dart-define=ENABLE_SIGNED_QR=false
+        env:
+          GRADLE_OPTS: "-Dorg.gradle.daemon=false"
 
       - name: Rename APK with timestamp
         run: |
@@ -69,4 +71,4 @@ jobs:
           echo "**Branch:** ${{ github.ref_name }}" >> $GITHUB_STEP_SUMMARY
           echo "**Commit:** ${{ github.sha }}" >> $GITHUB_STEP_SUMMARY
           echo '' >> $GITHUB_STEP_SUMMARY
-          echo 'Download APK di tab **Actions → Artifacts** di atas.' >> $GITHUB_STEP_SUMMARY
+          echo 'Download APK di tab **Actions → Artifacts**.' >> $GITHUB_STEP_SUMMARY
