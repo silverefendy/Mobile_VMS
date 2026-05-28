@@ -31,24 +31,38 @@ jobs:
           flutter --version
           java -version
 
-      - name: Install dependencies
-        run: flutter pub get
-
-      - name: Generate gradle wrapper jar (jika tidak ada di repo)
+      - name: Generate gradle wrapper jar jika tidak ada
         run: |
           if [ ! -f android/gradle/wrapper/gradle-wrapper.jar ]; then
-            echo "gradle-wrapper.jar tidak ditemukan, mendownload..."
-            cd android
-            gradle wrapper --gradle-version 8.14.1
-            cd ..
-          else
-            echo "gradle-wrapper.jar sudah ada."
+            echo "Generating gradle wrapper..."
+            cd android && gradle wrapper --gradle-version 8.14.1 && cd ..
           fi
         env:
           _JAVA_OPTIONS: "-Xmx1g"
 
       - name: Make gradlew executable
         run: chmod +x android/gradlew
+
+      - name: Pastikan debug.keystore tersedia untuk signing
+        run: |
+          mkdir -p ~/.android
+          if [ ! -f ~/.android/debug.keystore ]; then
+            keytool -genkeypair -v \
+              -keystore ~/.android/debug.keystore \
+              -storepass android \
+              -alias androiddebugkey \
+              -keypass android \
+              -keyalg RSA \
+              -keysize 2048 \
+              -validity 10000 \
+              -dname "CN=Android Debug,O=Android,C=US"
+            echo "debug.keystore dibuat."
+          else
+            echo "debug.keystore sudah ada."
+          fi
+
+      - name: Install dependencies
+        run: flutter pub get
 
       - name: Analyze code (non-fatal)
         run: flutter analyze --no-fatal-infos || true
@@ -64,9 +78,10 @@ jobs:
           GRADLE_OPTS: "-Dorg.gradle.daemon=false -Dorg.gradle.jvmargs=-Xmx3g"
 
       - name: Cari APK yang dihasilkan
+        if: always()
         run: |
-          echo "=== Daftar APK ==="
-          find . -name "*.apk" -not -path "*/cache/*" 2>/dev/null || echo "Tidak ada APK ditemukan"
+          echo "=== Daftar semua APK ==="
+          find . -name "*.apk" -not -path "*/cache/*" 2>/dev/null || echo "Tidak ada APK"
 
       - name: Rename dan pindah APK
         run: |
@@ -82,7 +97,7 @@ jobs:
             fi
           done
           if [ -z "$APK_SRC" ]; then
-            echo "ERROR: Tidak ada APK ditemukan!"
+            echo "ERROR: APK tidak ditemukan!"
             find . -name "*.apk" 2>/dev/null
             exit 1
           fi

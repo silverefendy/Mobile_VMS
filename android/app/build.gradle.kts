@@ -1,18 +1,24 @@
 import java.io.File
+import java.util.Properties
 
 plugins {
     id("com.android.application")
+    id("kotlin-android")
     id("dev.flutter.flutter-gradle-plugin")
 }
 
 android {
     namespace = "com.example.mobile_vms"
-    compileSdk = 36
+    compileSdk = flutter.compileSdkVersion
     ndkVersion = flutter.ndkVersion
 
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
+    }
+
+    kotlinOptions {
+        jvmTarget = "17"
     }
 
     defaultConfig {
@@ -23,20 +29,29 @@ android {
         versionName = flutter.versionName
     }
 
+    signingConfigs {
+        create("release") {
+            val keystorePropsFile = rootProject.file("key.properties")
+            if (keystorePropsFile.exists()) {
+                val props = Properties()
+                props.load(keystorePropsFile.inputStream())
+                storeFile = File(props["storeFile"] as String)
+                storePassword = props["storePassword"] as String
+                keyAlias = props["keyAlias"] as String
+                keyPassword = props["keyPassword"] as String
+            } else {
+                // Fallback debug signing untuk CI / testing
+                storeFile = File(System.getProperty("user.home") + "/.android/debug.keystore")
+                storePassword = "android"
+                keyAlias = "androiddebugkey"
+                keyPassword = "android"
+            }
+        }
+    }
+
     buildTypes {
         release {
-            val keystorePath = System.getenv("KEYSTORE_PATH")
-            if (!keystorePath.isNullOrBlank() && File(keystorePath).exists()) {
-                signingConfig = signingConfigs.create("release").apply {
-                    storeFile = File(keystorePath)
-                    storePassword = System.getenv("KEYSTORE_PASSWORD") ?: ""
-                    keyAlias = System.getenv("KEY_ALIAS") ?: ""
-                    keyPassword = System.getenv("KEY_PASSWORD") ?: ""
-                }
-            } else {
-                // Fallback debug signing — cukup untuk testing & install manual
-                signingConfig = signingConfigs.getByName("debug")
-            }
+            signingConfig = signingConfigs.getByName("release")
             isMinifyEnabled = false
             isShrinkResources = false
         }
