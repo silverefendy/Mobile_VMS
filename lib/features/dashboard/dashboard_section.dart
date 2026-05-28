@@ -11,12 +11,39 @@ class DashboardSection extends StatefulWidget {
   State<DashboardSection> createState() => _DashboardSectionState();
 }
 
-class _DashboardSectionState extends State<DashboardSection> {
+class _DashboardSectionState extends State<DashboardSection>
+    with RouteAware {
+  // RouteObserver untuk detect saat halaman kembali ke foreground
+  static final RouteObserver<ModalRoute<void>> _routeObserver =
+      RouteObserver<ModalRoute<void>>();
+
+  /// Panggil observer ini dari MaterialApp jika perlu;
+  /// sebagai alternatif kita pakai WidgetsBindingObserver di sini
   @override
   void initState() {
     super.initState();
-    WidgetsBinding.instance.addPostFrameCallback(
-        (_) => context.read<DashboardController>().refresh());
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) context.read<DashboardController>().refresh();
+    });
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    // Re-subscribe setiap kali dependencies berubah (termasuk saat kembali ke layar)
+    _routeObserver.subscribe(this, ModalRoute.of(context)!);
+  }
+
+  @override
+  void dispose() {
+    _routeObserver.unsubscribe(this);
+    super.dispose();
+  }
+
+  /// Dipanggil saat halaman ini kembali ke foreground (pop dari halaman lain)
+  @override
+  void didPopNext() {
+    context.read<DashboardController>().refresh();
   }
 
   @override
@@ -53,7 +80,8 @@ class _DashboardSectionState extends State<DashboardSection> {
             IconButton(
               icon: const Icon(Icons.refresh_rounded),
               color: Colors.red.shade400,
-              onPressed: vm.refresh,
+              // Panggil refresh dengan benar — bungkus di callback async
+              onPressed: () => context.read<DashboardController>().refresh(),
               iconSize: 20,
             ),
           ],
@@ -81,7 +109,7 @@ class _DashboardSectionState extends State<DashboardSection> {
               ),
             ),
             GestureDetector(
-              onTap: vm.refresh,
+              onTap: () => context.read<DashboardController>().refresh(),
               child: const Icon(Icons.refresh_rounded,
                   size: 18, color: Color(0xFF1E3A8A)),
             ),
@@ -104,7 +132,8 @@ class _DashboardSectionState extends State<DashboardSection> {
               title: card.title,
               value: card.value,
               iconKey: card.iconKey,
-              onTap: card.route != null ? () => context.push(card.route!) : null,
+              onTap:
+                  card.route != null ? () => context.push(card.route!) : null,
             );
           },
         ),
