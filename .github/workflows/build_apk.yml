@@ -31,49 +31,65 @@ jobs:
           flutter --version
           java -version
 
-      - name: Make gradlew executable
-        run: chmod +x android/gradlew
-
       - name: Install dependencies
         run: flutter pub get
+
+      - name: Generate gradle wrapper jar (jika tidak ada di repo)
+        run: |
+          if [ ! -f android/gradle/wrapper/gradle-wrapper.jar ]; then
+            echo "gradle-wrapper.jar tidak ditemukan, mendownload..."
+            cd android
+            gradle wrapper --gradle-version 8.14.1
+            cd ..
+          else
+            echo "gradle-wrapper.jar sudah ada."
+          fi
+        env:
+          _JAVA_OPTIONS: "-Xmx1g"
+
+      - name: Make gradlew executable
+        run: chmod +x android/gradlew
 
       - name: Analyze code (non-fatal)
         run: flutter analyze --no-fatal-infos || true
 
-      - name: Build APK langsung via Gradle (bypass flutter build)
-        working-directory: android
-        run: ./gradlew assembleRelease --no-daemon --stacktrace
+      - name: Build APK
+        run: |
+          flutter build apk --release \
+            --dart-define=APP_ENV=production \
+            --dart-define=ENABLE_API_LOG=false \
+            --dart-define=ENABLE_SIGNED_QR=false
         env:
           _JAVA_OPTIONS: "-Xmx3g -Xms512m"
           GRADLE_OPTS: "-Dorg.gradle.daemon=false -Dorg.gradle.jvmargs=-Xmx3g"
 
-      - name: Cari file APK yang dihasilkan
+      - name: Cari APK yang dihasilkan
         run: |
-          echo "=== Mencari APK ==="
-          find . -name "*.apk" -not -path "*/cache/*" 2>/dev/null
-          echo "=== Selesai ==="
+          echo "=== Daftar APK ==="
+          find . -name "*.apk" -not -path "*/cache/*" 2>/dev/null || echo "Tidak ada APK ditemukan"
 
       - name: Rename dan pindah APK
         run: |
           TIMESTAMP=$(date +'%Y%m%d-%H%M')
-          # Coba beberapa path output yang mungkin
           APK_SRC=""
-          if [ -f "android/app/build/outputs/apk/release/app-release.apk" ]; then
-            APK_SRC="android/app/build/outputs/apk/release/app-release.apk"
-          elif [ -f "build/app/outputs/flutter-apk/app-release.apk" ]; then
-            APK_SRC="build/app/outputs/flutter-apk/app-release.apk"
-          elif [ -f "android/app/build/outputs/apk/release/app-release-unsigned.apk" ]; then
-            APK_SRC="android/app/build/outputs/apk/release/app-release-unsigned.apk"
-          else
-            echo "APK tidak ditemukan di path manapun!"
+          for P in \
+            "build/app/outputs/flutter-apk/app-release.apk" \
+            "android/app/build/outputs/apk/release/app-release.apk" \
+            "android/app/build/outputs/apk/release/app-release-unsigned.apk"; do
+            if [ -f "$P" ]; then
+              APK_SRC="$P"
+              break
+            fi
+          done
+          if [ -z "$APK_SRC" ]; then
+            echo "ERROR: Tidak ada APK ditemukan!"
             find . -name "*.apk" 2>/dev/null
             exit 1
           fi
           mkdir -p dist
           cp "$APK_SRC" "dist/mobile-vms-${TIMESTAMP}.apk"
           echo "APK_PATH=dist/mobile-vms-${TIMESTAMP}.apk" >> $GITHUB_ENV
-          echo "APK ditemukan di: $APK_SRC"
-          echo "APK disalin ke: dist/mobile-vms-${TIMESTAMP}.apk"
+          echo "Sukses: $APK_SRC -> dist/mobile-vms-${TIMESTAMP}.apk"
 
       - name: Upload APK artifact
         uses: actions/upload-artifact@v4
