@@ -173,7 +173,7 @@ class _ScannerScreenState extends State<ScannerScreen>
           ),
 
           // Viewfinder
-          const _ScanViewfinder(),
+          _ScanViewfinder(),
 
           // Status bar bawah — hanya saat idle/scanning
           if (scan.state == ScanState.idle || scan.state == ScanState.scanning)
