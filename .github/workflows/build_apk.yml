@@ -30,6 +30,8 @@ jobs:
         run: |
           flutter --version
           java -version
+          echo "FLUTTER_ROOT=$FLUTTER_ROOT"
+          echo "ANDROID_HOME=$ANDROID_HOME"
 
       - name: Generate local.properties
         run: |
@@ -49,9 +51,9 @@ jobs:
             curl -fsSL \
               "https://raw.githubusercontent.com/gradle/gradle/v8.14.1/gradle/wrapper/gradle-wrapper.jar" \
               -o "$JAR"
-            echo "gradle-wrapper.jar berhasil didownload."
+            echo "Selesai."
           else
-            echo "gradle-wrapper.jar sudah ada."
+            echo "gradle-wrapper.jar sudah ada, skip."
           fi
 
       - name: Make gradlew executable
@@ -68,9 +70,6 @@ jobs:
               -keypass android \
               -keyalg RSA -keysize 2048 -validity 10000 \
               -dname "CN=Android Debug,O=Android,C=US"
-            echo "debug.keystore dibuat."
-          else
-            echo "debug.keystore sudah ada."
           fi
 
       - name: Install dependencies
@@ -79,37 +78,47 @@ jobs:
       - name: Analyze code (non-fatal)
         run: flutter analyze --no-fatal-infos || true
 
-      - name: Build APK
+      - name: Build APK via Gradle langsung (bypass flutter CLI)
+        working-directory: android
         run: |
-          flutter build apk --release \
-            --dart-define=APP_ENV=production \
-            --dart-define=ENABLE_API_LOG=false \
-            --dart-define=ENABLE_SIGNED_QR=false
+          ./gradlew assembleRelease \
+            --no-daemon \
+            --stacktrace \
+            -Pflutter.sdk=$FLUTTER_ROOT \
+            -Pflutter.buildMode=release \
+            -Pflutter.versionName=1.0.0 \
+            -Pflutter.versionCode=1
         env:
           _JAVA_OPTIONS: "-Xmx3g -Xms512m"
           GRADLE_OPTS: "-Dorg.gradle.daemon=false -Dorg.gradle.jvmargs=-Xmx3g"
 
-      - name: Cari APK (debug info)
+      - name: Debug - tampilkan semua output build
         if: always()
         run: |
           echo "=== Semua file APK ==="
-          find . -name "*.apk" -not -path "*/cache/*" 2>/dev/null || echo "Tidak ada APK"
+          find . -name "*.apk" 2>/dev/null || echo "Tidak ada APK"
+          echo ""
+          echo "=== Isi android/app/build/outputs ==="
+          ls -la android/app/build/outputs/ 2>/dev/null || echo "Folder tidak ada"
+          echo ""
+          echo "=== Isi android/app/build/outputs/apk ==="
+          ls -laR android/app/build/outputs/apk/ 2>/dev/null || echo "Folder apk tidak ada"
 
-      - name: Rename dan pindah APK
+      - name: Salin APK ke folder dist
         run: |
           TIMESTAMP=$(date +'%Y%m%d-%H%M')
           APK_SRC=""
           for P in \
-            "build/app/outputs/flutter-apk/app-release.apk" \
             "android/app/build/outputs/apk/release/app-release.apk" \
-            "android/app/build/outputs/apk/release/app-release-unsigned.apk"; do
+            "android/app/build/outputs/apk/release/app-release-unsigned.apk" \
+            "build/app/outputs/flutter-apk/app-release.apk"; do
             if [ -f "$P" ]; then
               APK_SRC="$P"
               break
             fi
           done
           if [ -z "$APK_SRC" ]; then
-            echo "ERROR: APK tidak ditemukan!"
+            echo "ERROR: APK tidak ditemukan di semua path yang dicek!"
             find . -name "*.apk" 2>/dev/null
             exit 1
           fi
