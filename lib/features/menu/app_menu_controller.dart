@@ -22,11 +22,17 @@ class AppMenuController extends ChangeNotifier {
   }
 
   Future<void> refresh() async {
-    final flags = await _menuRepository.fetchFeatureFlags();
-    final fetched = await _menuRepository.fetchMenu();
-    featureFlags = flags;
-    items = fetched.where((m) => m.featureFlag == null || (flags[m.featureFlag!] ?? true)).toList();
-    notifyListeners();
+    try {
+      final flags = await _menuRepository.fetchFeatureFlags();
+      final fetched = await _menuRepository.fetchMenu();
+      featureFlags = flags;
+      items = fetched
+          .where((m) => m.featureFlag == null || (flags[m.featureFlag!] ?? true))
+          .toList();
+      notifyListeners();
+    } catch (_) {
+      // Keep the last known menu during transient resume/network failures.
+    }
   }
 
   bool can(String capability) => featureFlags[capability] ?? false;

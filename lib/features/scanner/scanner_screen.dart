@@ -12,70 +12,138 @@ class ScannerScreen extends StatefulWidget {
   State<ScannerScreen> createState() => _ScannerScreenState();
 }
 
-class _ScannerScreenState extends State<ScannerScreen> {
+class _ScannerScreenState extends State<ScannerScreen>
+    with WidgetsBindingObserver {
   final MobileScannerController _controller = MobileScannerController(
     formats: [BarcodeFormat.qrCode],
+    detectionSpeed: DetectionSpeed.normal,
+    autoStart: false,
   );
 
   /// Guard agar dialog tidak muncul dobel
   bool _dialogShowing = false;
+  bool _isProcessingScan = false;
+  bool _cameraPaused = false;
 
   @override
   void initState() {
     super.initState();
-    WidgetsBinding.instance.addPostFrameCallback((_) {
+    WidgetsBinding.instance.addObserver(this);
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
       if (!mounted) return;
       final coordinator = context.read<ScanCoordinator>();
       coordinator.setReady();
-      coordinator.retryPending();
+      await _safeStartCamera();
+      await coordinator.retryPending();
     });
   }
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    _safeStopCamera();
     _controller.dispose();
     super.dispose();
   }
 
-  Future<void> _maybeShowResultDialog(
-      BuildContext context, ScanCoordinator scan) async {
-    if (_dialogShowing) return;
-    if (scan.state != ScanState.success &&
-        scan.state != ScanState.error &&
-        scan.state != ScanState.queued) return;
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    // Lifecycle-critical: explicitly release and reacquire the camera so Android
+    // does not return to a frozen/black preview after backgrounding.
+    if (state == AppLifecycleState.resumed) {
+      if (!_dialogShowing && !_isProcessingScan) {
+        if (_cameraPaused) _safeStartCamera();
+        if (mounted) context.read<ScanCoordinator>().setReady();
+      }
+    } else if (state == AppLifecycleState.inactive ||
+        state == AppLifecycleState.paused ||
+        state == AppLifecycleState.detached) {
+      _safeStopCamera();
+    }
+  }
 
+  Future<void> _safeStopCamera() async {
+    try {
+      await _controller.stop();
+    } catch (_) {
+      // Ignore camera plugin races during navigation/lifecycle transitions.
+    } finally {
+      _cameraPaused = true;
+    }
+  }
+
+  Future<void> _safeStartCamera() async {
+    if (!mounted) return;
+    try {
+      await _controller.start();
+      _cameraPaused = false;
+    } catch (_) {
+      _cameraPaused = true;
+    }
+  }
+
+  bool _hasResult(ScanState state) =>
+      state == ScanState.success ||
+      state == ScanState.error ||
+      state == ScanState.queued;
+
+  Future<void> _handleDetection(
+    ScanCoordinator scan,
+    BarcodeCapture capture,
+  ) async {
+    if (_isProcessingScan || _dialogShowing) return;
+    String? raw;
+    for (final barcode in capture.barcodes) {
+      final value = barcode.rawValue;
+      if (value != null && value.isNotEmpty) {
+        raw = value;
+        break;
+      }
+    }
+    if (raw == null) return;
+
+    _isProcessingScan = true;
+    await _safeStopCamera();
+    try {
+      await scan.onCodeDetected(raw);
+      if (!mounted) return;
+      if (_hasResult(scan.state)) {
+        await _showResultDialog(scan);
+      }
+    } finally {
+      _isProcessingScan = false;
+      if (mounted) {
+        scan.resetAfterResult();
+        await _safeStartCamera();
+      }
+    }
+  }
+
+  Future<void> _showResultDialog(ScanCoordinator scan) async {
+    if (_dialogShowing || !_hasResult(scan.state)) return;
     _dialogShowing = true;
     final capturedState = scan.state;
     final capturedMsg = scan.feedback;
     final capturedAction = scan.lastDetectedAction;
 
-    await showDialog<void>(
-      context: context,
-      barrierDismissible: false,
-      builder: (_) => _ResultDialog(
-        state: capturedState,
-        message: capturedMsg,
-        detectedAction: capturedAction,
-      ),
-    );
-
-    // Dialog sudah ditutup — reset coordinator supaya scanner siap lagi
-    if (mounted) {
-      context.read<ScanCoordinator>().resetAfterResult();
+    try {
+      await showDialog<void>(
+        context: context,
+        barrierDismissible: false,
+        builder: (_) => _ResultDialog(
+          state: capturedState,
+          message: capturedMsg,
+          detectedAction: capturedAction,
+        ),
+      );
+    } finally {
+      _dialogShowing = false;
     }
-    _dialogShowing = false;
   }
 
   @override
   Widget build(BuildContext context) {
     final scan = context.watch<ScanCoordinator>();
-
-    // Panggil dialog hanya sekali per state result
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (mounted) _maybeShowResultDialog(context, scan);
-    });
-
-    final isAutoMode = scan.scanMode == ScanMode.auto;
 
     return Scaffold(
       backgroundColor: Colors.black,
@@ -85,12 +153,23 @@ class _ScannerScreenState extends State<ScannerScreen> {
           // Kamera
           MobileScanner(
             controller: _controller,
-            onDetect: (capture) {
-              final raw = capture.barcodes.first.rawValue;
-              if (raw != null && raw.isNotEmpty) {
-                scan.onCodeDetected(raw);
+            useAppLifecycleState: false,
+            onDetect: (capture) => _handleDetection(scan, capture),
+            onDetectError: (_, __) {
+              if (!_dialogShowing && mounted) {
+                scan.handleCameraError();
               }
             },
+            errorBuilder: (context, error) => Center(
+              child: Padding(
+                padding: const EdgeInsets.all(24),
+                child: Text(
+                  'Kamera tidak tersedia: ${error.errorCode.name}',
+                  textAlign: TextAlign.center,
+                  style: const TextStyle(color: Colors.white),
+                ),
+              ),
+            ),
           ),
 
           // Viewfinder
@@ -110,9 +189,7 @@ class _ScannerScreenState extends State<ScannerScreen> {
                   borderRadius: BorderRadius.circular(12),
                 ),
                 child: Text(
-                  isAutoMode
-                      ? 'Mode otomatis — sistem akan deteksi check-in / check-out'
-                      : '${_actionLabel(scan.action)} — scan QR',
+                  'Scan QR — sistem otomatis memilih check-in / check-out',
                   textAlign: TextAlign.center,
                   style: const TextStyle(color: Colors.white70, fontSize: 13),
                 ),
@@ -150,36 +227,19 @@ class _ScannerScreenState extends State<ScannerScreen> {
                   children: [
                     _TopBarButton(
                       icon: Icons.arrow_back,
-                      onTap: () => Navigator.pop(context),
+                      onTap: () async {
+                        await _safeStopCamera();
+                        if (context.mounted) Navigator.pop(context);
+                      },
                     ),
                     const Spacer(),
 
-                    // Mode selector: Auto | Check-In | Check-Out | Karyawan
-                    Container(
-                      padding: const EdgeInsets.symmetric(
-                          horizontal: 4, vertical: 4),
-                      decoration: BoxDecoration(
-                        color: Colors.black45,
-                        borderRadius: BorderRadius.circular(20),
-                      ),
-                      child: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          // Tombol AUTO
-                          _ModeChip(
-                            label: 'Auto',
-                            isActive: isAutoMode,
-                            activeColor: Colors.blue.shade300,
-                            onTap: () => scan.setScanMode(ScanMode.auto),
-                          ),
-                          // Tombol manual per aksi
-                          ...ScanAction.values.map((a) => _ModeChip(
-                                label: _actionLabelShort(a),
-                                isActive:
-                                    !isAutoMode && scan.action == a,
-                                onTap: () => scan.setAction(a),
-                              )),
-                        ],
+                    const Text(
+                      'Auto',
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontSize: 13,
+                        fontWeight: FontWeight.w600,
                       ),
                     ),
 
@@ -201,28 +261,6 @@ class _ScannerScreenState extends State<ScannerScreen> {
         ],
       ),
     );
-  }
-
-  String _actionLabel(ScanAction a) {
-    switch (a) {
-      case ScanAction.checkIn:
-        return 'Check-In';
-      case ScanAction.checkOut:
-        return 'Check-Out';
-      case ScanAction.employeeEntry:
-        return 'Karyawan';
-    }
-  }
-
-  String _actionLabelShort(ScanAction a) {
-    switch (a) {
-      case ScanAction.checkIn:
-        return 'In';
-      case ScanAction.checkOut:
-        return 'Out';
-      case ScanAction.employeeEntry:
-        return 'Emp';
-    }
   }
 }
 
@@ -371,122 +409,4 @@ class _TopBarButton extends StatelessWidget {
       ),
     );
   }
-}
-
-// ---------------------------------------------------------------------------
-// Mode chip di top bar
-// ---------------------------------------------------------------------------
-
-class _ModeChip extends StatelessWidget {
-  const _ModeChip({
-    required this.label,
-    required this.isActive,
-    required this.onTap,
-    this.activeColor,
-  });
-
-  final String label;
-  final bool isActive;
-  final VoidCallback onTap;
-  final Color? activeColor;
-
-  @override
-  Widget build(BuildContext context) {
-    return GestureDetector(
-      onTap: onTap,
-      child: AnimatedContainer(
-        duration: const Duration(milliseconds: 200),
-        padding:
-            const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-        decoration: BoxDecoration(
-          color: isActive
-              ? (activeColor ?? Colors.white)
-              : Colors.transparent,
-          borderRadius: BorderRadius.circular(16),
-        ),
-        child: Text(
-          label,
-          style: TextStyle(
-            fontSize: 12,
-            fontWeight: FontWeight.w600,
-            color: isActive
-                ? (activeColor != null
-                    ? Colors.white
-                    : Colors.black87)
-                : Colors.white70,
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-// ---------------------------------------------------------------------------
-// Viewfinder
-// ---------------------------------------------------------------------------
-
-class _ScanViewfinder extends StatelessWidget {
-  const _ScanViewfinder();
-
-  @override
-  Widget build(BuildContext context) {
-    return Center(
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          CustomPaint(
-            size: const Size(220, 220),
-            painter: _ViewfinderPainter(),
-          ),
-          const SizedBox(height: 16),
-          const Text(
-            'Arahkan kamera ke QR code',
-            style: TextStyle(color: Colors.white54, fontSize: 13),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _ViewfinderPainter extends CustomPainter {
-  @override
-  void paint(Canvas canvas, Size size) {
-    final paint = Paint()
-      ..color = Colors.white.withOpacity(0.2)
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = 1.5;
-
-    final cornerPaint = Paint()
-      ..color = Colors.blue.shade300
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = 3
-      ..strokeCap = StrokeCap.round;
-
-    const r = Radius.circular(4);
-    final rect = Rect.fromLTWH(0, 0, size.width, size.height);
-    canvas.drawRRect(RRect.fromRectAndRadius(rect, r), paint);
-
-    const len = 24.0;
-    final corners = [
-      [Offset(0, len), Offset.zero, Offset(len, 0)],
-      [Offset(size.width - len, 0), Offset(size.width, 0), Offset(size.width, len)],
-      [Offset(0, size.height - len), Offset(0, size.height), Offset(len, size.height)],
-      [
-        Offset(size.width - len, size.height),
-        Offset(size.width, size.height),
-        Offset(size.width, size.height - len),
-      ],
-    ];
-    for (final c in corners) {
-      final path = Path()
-        ..moveTo(c[0].dx, c[0].dy)
-        ..lineTo(c[1].dx, c[1].dy)
-        ..lineTo(c[2].dx, c[2].dy);
-      canvas.drawPath(path, cornerPaint);
-    }
-  }
-
-  @override
-  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
 }

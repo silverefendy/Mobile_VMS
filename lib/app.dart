@@ -5,6 +5,8 @@ import 'app/app_router.dart';
 import 'core/auth/auth_controller.dart';
 import 'core/lifecycle/app_lifecycle_coordinator.dart';
 import 'core/settings/settings_controller.dart';
+import 'features/dashboard/dashboard_controller.dart';
+import 'features/menu/app_menu_controller.dart';
 
 class MobileVMSApp extends StatefulWidget {
   const MobileVMSApp({super.key});
@@ -22,10 +24,24 @@ class _MobileVMSAppState extends State<MobileVMSApp> {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted || _lifecycle != null) return;
       _lifecycle = AppLifecycleCoordinator(
-        onResume: () => context.read<AuthController>().restoreSession(),
+        onResume: _handleAppResume,
         onPause: () {},
       )..attach();
     });
+  }
+
+  Future<void> _handleAppResume() async {
+    if (!mounted) return;
+    final auth = context.read<AuthController>();
+    await auth.restoreSessionOnResume();
+    if (!mounted || auth.status != AuthStatus.authenticated) return;
+
+    // Refresh authenticated data after Android/iOS resumes the process so stale
+    // failed dashboard/menu requests recover without forcing logout/login.
+    await Future.wait<void>([
+      context.read<AppMenuController>().refresh(),
+      context.read<DashboardController>().refresh(force: true),
+    ]);
   }
 
   @override

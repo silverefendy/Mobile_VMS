@@ -42,7 +42,10 @@ class ScanCoordinator extends ChangeNotifier {
   /// Aksi yang dideteksi otomatis pada scan terakhir (untuk ditampilkan di UI)
   ScanAction? lastDetectedAction;
 
-  bool get isBusy => state == ScanState.processing || state == ScanState.cooldown;
+  bool _isProcessing = false;
+
+  bool get isBusy =>
+      _isProcessing || state == ScanState.processing || state == ScanState.cooldown;
   int get pendingRetryCount => _retryQueue.length;
 
   void setScanMode(ScanMode mode) {
@@ -58,6 +61,12 @@ class ScanCoordinator extends ChangeNotifier {
 
   void toggleTorch() {
     torchOn = !torchOn;
+    notifyListeners();
+  }
+
+  void handleCameraError([String? message]) {
+    state = ScanState.error;
+    feedback = message ?? 'Kamera gagal membaca QR, coba lagi';
     notifyListeners();
   }
 
@@ -87,22 +96,16 @@ class ScanCoordinator extends ChangeNotifier {
     if (_lastProcessAt != null &&
         now.difference(_lastProcessAt!).inMilliseconds < 900) return;
 
-    // Duplicate check — per aksi, bukan global
-    // Sehingga scan check-in lalu checkout tidak dianggap duplicate
+    // Debounce identical camera frames without showing another blocking dialog.
+    // The camera is also stopped by ScannerScreen while this method runs.
     final codeCache = _recentCodes[rawCode];
-    if (codeCache != null) {
-      final actionKey = scanMode == ScanMode.auto ? 'auto' : _manualAction.name;
-      final lastAt = codeCache[actionKey];
-      if (lastAt != null && now.difference(lastAt).inSeconds < 3) {
-        state = ScanState.error;
-        feedback = 'Scan terlalu cepat, tunggu sebentar';
-        notifyListeners();
-        return;
-      }
+    final actionKey = scanMode == ScanMode.auto ? 'auto' : _manualAction.name;
+    final lastAt = codeCache?[actionKey];
+    if (lastAt != null && now.difference(lastAt).inMilliseconds < 1200) {
+      return;
     }
 
     // Simpan ke cache dengan key aksi
-    final actionKey = scanMode == ScanMode.auto ? 'auto' : _manualAction.name;
     _recentCodes.putIfAbsent(rawCode, () => {})[actionKey] = now;
 
     _recentScanWindow.add(now);
@@ -111,59 +114,47 @@ class ScanCoordinator extends ChangeNotifier {
       _recentScanWindow.removeFirst();
     }
 
+    _isProcessing = true;
     state = ScanState.processing;
     feedback = 'Memproses...';
     notifyListeners();
 
-    if (AppConfig.enableOfflineQueue && !await _connectivityService.isOnline()) {
-      final offlineAction =
-          scanMode == ScanMode.auto ? ScanAction.checkIn : _manualAction;
-      _retryQueue.enqueue(PendingOperation(
-        id: rawCode.hashCode.toString(),
-        payload: {'rawCode': rawCode, 'action': offlineAction.name},
-        createdAt: DateTime.now(),
-      ));
-      state = ScanState.queued;
-      feedback = 'Offline - scan antri (${_retryQueue.length})';
-      notifyListeners();
-      return;
-    }
-
-    if (scanMode == ScanMode.auto) {
-      await _processAuto(rawCode);
-    } else {
-      await _process(rawCode, _manualAction);
-    }
-  }
-
-  /// Auto-detect: query status visitor dulu, lalu tentukan aksi yang tepat
-  Future<void> _processAuto(String rawCode) async {
     try {
-      final status = await _repo.getVisitorStatus(rawCode: rawCode);
-      final detectedAction = _resolveAction(status);
-      lastDetectedAction = detectedAction;
+      if (AppConfig.enableOfflineQueue &&
+          !await _connectivityService.isOnline()) {
+        final offlineAction =
+            scanMode == ScanMode.auto ? ScanAction.checkIn : _manualAction;
+        _retryQueue.enqueue(PendingOperation(
+          id: rawCode.hashCode.toString(),
+          payload: {'rawCode': rawCode, 'action': offlineAction.name},
+          createdAt: DateTime.now(),
+        ));
+        state = ScanState.queued;
+        feedback = 'Offline - scan antri (${_retryQueue.length})';
+        notifyListeners();
+        return;
+      }
+
+      if (scanMode == ScanMode.auto) {
+        await _processAuto(rawCode);
+      } else {
+        await _process(rawCode, _manualAction);
+      }
+    } finally {
+      // Lifecycle-critical: never leave the coordinator busy after a dialog,
+      // navigation event, network timeout, or backend error.
+      _isProcessing = false;
+      _lastProcessAt = DateTime.now();
       notifyListeners();
-      await _process(rawCode, detectedAction);
-    } catch (e) {
-      // Kalau gagal query status (misal QR karyawan), fallback ke checkIn
-      await _process(rawCode, ScanAction.checkIn);
     }
   }
 
-  /// Tentukan aksi berdasarkan status visitor dari backend
-  ScanAction _resolveAction(String status) {
-    switch (status) {
-      case 'Registered':
-      case 'Awaiting Approval':
-      case 'Approved':
-        return ScanAction.checkIn;
-      case 'Completed':
-        return ScanAction.checkOut;
-      case 'Checked Out':
-        return ScanAction.checkOut; // akan gagal di backend, pesan error akan jelas
-      default:
-        return ScanAction.checkIn;
-    }
+  /// Auto-detect: active/open visit => check-out, otherwise check-in.
+  Future<void> _processAuto(String rawCode) async {
+    final detectedAction = await _repo.determineVisitAction(rawCode: rawCode);
+    lastDetectedAction = detectedAction;
+    notifyListeners();
+    await _process(rawCode, detectedAction);
   }
 
   DateTime? _lastProcessAt;
@@ -215,6 +206,7 @@ class ScanCoordinator extends ChangeNotifier {
   }
 
   void setReady() {
+    _isProcessing = false;
     state = ScanState.scanning;
     feedback = 'Arahkan ke QR code';
     lastDetectedAction = null;
