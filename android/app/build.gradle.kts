@@ -1,7 +1,5 @@
 plugins {
     id("com.android.application")
-    // Gunakan built-in Kotlin dari Flutter, BUKAN org.jetbrains.kotlin.android
-    // Referensi: https://docs.flutter.dev/release/breaking-changes/migrate-to-built-in-kotlin/for-app-developers
     id("dev.flutter.flutter-gradle-plugin")
 }
 
@@ -23,18 +21,23 @@ android {
         versionName = flutter.versionName
     }
 
-    signingConfigs {
-        create("release") {
-            storeFile = file(System.getenv("KEYSTORE_PATH") ?: "${rootDir}/debug.keystore")
-            storePassword = System.getenv("KEYSTORE_PASSWORD") ?: "android"
-            keyAlias = System.getenv("KEY_ALIAS") ?: "androiddebugkey"
-            keyPassword = System.getenv("KEY_PASSWORD") ?: "android"
-        }
-    }
-
     buildTypes {
         release {
-            signingConfig = signingConfigs.getByName("release")
+            // Pakai debug signing untuk CI build
+            // Untuk production, set KEYSTORE_PATH, KEYSTORE_PASSWORD, KEY_ALIAS, KEY_PASSWORD
+            // sebagai GitHub Secrets
+            val keystorePath = System.getenv("KEYSTORE_PATH")
+            if (keystorePath != null && java.io.File(keystorePath).exists()) {
+                signingConfig = signingConfigs.create("release").apply {
+                    storeFile = java.io.File(keystorePath)
+                    storePassword = System.getenv("KEYSTORE_PASSWORD") ?: ""
+                    keyAlias = System.getenv("KEY_ALIAS") ?: ""
+                    keyPassword = System.getenv("KEY_PASSWORD") ?: ""
+                }
+            } else {
+                // Fallback ke debug signing — APK tetap bisa di-install untuk testing
+                signingConfig = signingConfigs.getByName("debug")
+            }
             isMinifyEnabled = false
             isShrinkResources = false
         }

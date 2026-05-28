@@ -30,7 +30,6 @@ jobs:
         run: |
           flutter --version
           java -version
-          echo "Gradle wrapper: $(cat android/gradle/wrapper/gradle-wrapper.properties | grep distributionUrl)"
 
       - name: Make gradlew executable
         run: chmod +x android/gradlew
@@ -41,16 +40,16 @@ jobs:
       - name: Analyze code (non-fatal)
         run: flutter analyze --no-fatal-infos || true
 
-      - name: Build APK (release)
+      - name: Build APK (release, debug signing)
         run: |
           flutter build apk --release \
             --dart-define=APP_ENV=production \
             --dart-define=ENABLE_API_LOG=false \
             --dart-define=ENABLE_SIGNED_QR=false
         env:
-          # Override JVM heap untuk Gradle di CI — mencegah Java heap space error
           _JAVA_OPTIONS: "-Xmx3g -Xms512m"
           GRADLE_OPTS: "-Dorg.gradle.daemon=false -Dorg.gradle.jvmargs=-Xmx3g"
+          # Tidak set KEYSTORE_PATH — otomatis fallback ke debug signing
 
       - name: Rename APK with timestamp
         run: |
