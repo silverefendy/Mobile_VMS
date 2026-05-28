@@ -17,10 +17,14 @@ class _ScannerScreenState extends State<ScannerScreen> {
     formats: [BarcodeFormat.qrCode],
   );
 
+  /// Guard agar dialog tidak muncul dobel
+  bool _dialogShowing = false;
+
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
       final coordinator = context.read<ScanCoordinator>();
       coordinator.setReady();
       coordinator.retryPending();
@@ -33,111 +37,52 @@ class _ScannerScreenState extends State<ScannerScreen> {
     super.dispose();
   }
 
-  void _showResultDialog(BuildContext context, ScanState state, String message) {
-    final isSuccess = state == ScanState.success;
-    final isQueued = state == ScanState.queued;
+  Future<void> _maybeShowResultDialog(
+      BuildContext context, ScanCoordinator scan) async {
+    if (_dialogShowing) return;
+    if (scan.state != ScanState.success &&
+        scan.state != ScanState.error &&
+        scan.state != ScanState.queued) return;
 
-    showDialog<void>(
+    _dialogShowing = true;
+    final capturedState = scan.state;
+    final capturedMsg = scan.feedback;
+    final capturedAction = scan.lastDetectedAction;
+
+    await showDialog<void>(
       context: context,
       barrierDismissible: false,
-      builder: (_) => Dialog(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-        child: Padding(
-          padding: const EdgeInsets.fromLTRB(24, 28, 24, 20),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Container(
-                width: 64,
-                height: 64,
-                decoration: BoxDecoration(
-                  shape: BoxShape.circle,
-                  color: isSuccess
-                      ? Colors.green.shade50
-                      : isQueued
-                          ? Colors.orange.shade50
-                          : Colors.red.shade50,
-                ),
-                child: Icon(
-                  isSuccess
-                      ? Icons.check_circle_rounded
-                      : isQueued
-                          ? Icons.cloud_upload_rounded
-                          : Icons.error_rounded,
-                  size: 36,
-                  color: isSuccess
-                      ? Colors.green.shade600
-                      : isQueued
-                          ? Colors.orange.shade600
-                          : Colors.red.shade600,
-                ),
-              ),
-              const SizedBox(height: 16),
-              Text(
-                isSuccess
-                    ? 'Berhasil'
-                    : isQueued
-                        ? 'Tersimpan Offline'
-                        : 'Gagal',
-                style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w600),
-              ),
-              const SizedBox(height: 8),
-              Text(
-                message,
-                textAlign: TextAlign.center,
-                style: TextStyle(
-                  fontSize: 14,
-                  color: Colors.grey.shade600,
-                  height: 1.5,
-                ),
-              ),
-              const SizedBox(height: 24),
-              SizedBox(
-                width: double.infinity,
-                child: FilledButton(
-                  style: FilledButton.styleFrom(
-                    backgroundColor: isSuccess
-                        ? Colors.green.shade600
-                        : isQueued
-                            ? Colors.orange.shade600
-                            : Colors.red.shade600,
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                    padding: const EdgeInsets.symmetric(vertical: 14),
-                  ),
-                  onPressed: () => Navigator.of(context).pop(),
-                  child: const Text('OK', style: TextStyle(fontSize: 15)),
-                ),
-              ),
-            ],
-          ),
-        ),
+      builder: (_) => _ResultDialog(
+        state: capturedState,
+        message: capturedMsg,
+        detectedAction: capturedAction,
       ),
     );
+
+    // Dialog sudah ditutup — reset coordinator supaya scanner siap lagi
+    if (mounted) {
+      context.read<ScanCoordinator>().resetAfterResult();
+    }
+    _dialogShowing = false;
   }
 
   @override
   Widget build(BuildContext context) {
     final scan = context.watch<ScanCoordinator>();
 
+    // Panggil dialog hanya sekali per state result
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (!mounted) return;
-      if (scan.state == ScanState.success ||
-          scan.state == ScanState.error ||
-          scan.state == ScanState.queued) {
-        if (ModalRoute.of(context)?.isCurrent == true) {
-          _showResultDialog(context, scan.state, scan.feedback);
-        }
-      }
+      if (mounted) _maybeShowResultDialog(context, scan);
     });
+
+    final isAutoMode = scan.scanMode == ScanMode.auto;
 
     return Scaffold(
       backgroundColor: Colors.black,
       body: Stack(
         fit: StackFit.expand,
         children: [
-          // Camera
+          // Kamera
           MobileScanner(
             controller: _controller,
             onDetect: (capture) {
@@ -148,30 +93,39 @@ class _ScannerScreenState extends State<ScannerScreen> {
             },
           ),
 
-          // Viewfinder overlay
+          // Viewfinder
           const _ScanViewfinder(),
 
-          // Bottom status bar (tetap ada tapi hanya saat idle/scanning)
+          // Status bar bawah — hanya saat idle/scanning
           if (scan.state == ScanState.idle || scan.state == ScanState.scanning)
             Positioned(
               bottom: 100,
               left: 16,
               right: 16,
               child: Container(
-                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
                 decoration: BoxDecoration(
                   color: Colors.black54,
                   borderRadius: BorderRadius.circular(12),
                 ),
                 child: Text(
-                  scan.feedback,
+                  isAutoMode
+                      ? 'Mode otomatis — sistem akan deteksi check-in / check-out'
+                      : '${_actionLabel(scan.action)} — scan QR',
                   textAlign: TextAlign.center,
-                  style: const TextStyle(color: Colors.white70, fontSize: 14),
+                  style: const TextStyle(color: Colors.white70, fontSize: 13),
                 ),
               ),
             ),
 
-          // Retry button kalau ada pending
+          // Processing indicator
+          if (scan.state == ScanState.processing)
+            const Center(
+              child: CircularProgressIndicator(color: Colors.white),
+            ),
+
+          // Retry button
           if (scan.pendingRetryCount > 0)
             Positioned(
               bottom: 112,
@@ -190,55 +144,57 @@ class _ScannerScreenState extends State<ScannerScreen> {
             right: 0,
             child: SafeArea(
               child: Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                child: Row(children: [
-                  _TopBarButton(
-                    icon: Icons.arrow_back,
-                    onTap: () => Navigator.pop(context),
-                  ),
-                  const Spacer(),
-                  Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 4),
-                    decoration: BoxDecoration(
-                      color: Colors.black45,
-                      borderRadius: BorderRadius.circular(20),
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                child: Row(
+                  children: [
+                    _TopBarButton(
+                      icon: Icons.arrow_back,
+                      onTap: () => Navigator.pop(context),
                     ),
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: ScanAction.values.map((a) {
-                        final isActive = scan.action == a;
-                        return GestureDetector(
-                          onTap: () => scan.setAction(a),
-                          child: AnimatedContainer(
-                            duration: const Duration(milliseconds: 200),
-                            padding: const EdgeInsets.symmetric(
-                                horizontal: 12, vertical: 6),
-                            decoration: BoxDecoration(
-                              color: isActive ? Colors.white : Colors.transparent,
-                              borderRadius: BorderRadius.circular(16),
-                            ),
-                            child: Text(
-                              _actionLabel(a),
-                              style: TextStyle(
-                                fontSize: 12,
-                                fontWeight: FontWeight.w600,
-                                color: isActive ? Colors.black87 : Colors.white70,
-                              ),
-                            ),
+                    const Spacer(),
+
+                    // Mode selector: Auto | Check-In | Check-Out | Karyawan
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 4, vertical: 4),
+                      decoration: BoxDecoration(
+                        color: Colors.black45,
+                        borderRadius: BorderRadius.circular(20),
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          // Tombol AUTO
+                          _ModeChip(
+                            label: 'Auto',
+                            isActive: isAutoMode,
+                            activeColor: Colors.blue.shade300,
+                            onTap: () => scan.setScanMode(ScanMode.auto),
                           ),
-                        );
-                      }).toList(),
+                          // Tombol manual per aksi
+                          ...ScanAction.values.map((a) => _ModeChip(
+                                label: _actionLabelShort(a),
+                                isActive:
+                                    !isAutoMode && scan.action == a,
+                                onTap: () => scan.setAction(a),
+                              )),
+                        ],
+                      ),
                     ),
-                  ),
-                  const Spacer(),
-                  _TopBarButton(
-                    icon: scan.torchOn ? Icons.flash_on : Icons.flash_off,
-                    onTap: () async {
-                      scan.toggleTorch();
-                      await _controller.toggleTorch();
-                    },
-                  ),
-                ]),
+
+                    const Spacer(),
+                    _TopBarButton(
+                      icon: scan.torchOn
+                          ? Icons.flash_on
+                          : Icons.flash_off,
+                      onTap: () async {
+                        scan.toggleTorch();
+                        await _controller.toggleTorch();
+                      },
+                    ),
+                  ],
+                ),
               ),
             ),
           ),
@@ -247,8 +203,8 @@ class _ScannerScreenState extends State<ScannerScreen> {
     );
   }
 
-  String _actionLabel(ScanAction action) {
-    switch (action) {
+  String _actionLabel(ScanAction a) {
+    switch (a) {
       case ScanAction.checkIn:
         return 'Check-In';
       case ScanAction.checkOut:
@@ -257,7 +213,143 @@ class _ScannerScreenState extends State<ScannerScreen> {
         return 'Karyawan';
     }
   }
+
+  String _actionLabelShort(ScanAction a) {
+    switch (a) {
+      case ScanAction.checkIn:
+        return 'In';
+      case ScanAction.checkOut:
+        return 'Out';
+      case ScanAction.employeeEntry:
+        return 'Emp';
+    }
+  }
 }
+
+// ---------------------------------------------------------------------------
+// Result Dialog
+// ---------------------------------------------------------------------------
+
+class _ResultDialog extends StatelessWidget {
+  const _ResultDialog({
+    required this.state,
+    required this.message,
+    this.detectedAction,
+  });
+
+  final ScanState state;
+  final String message;
+  final ScanAction? detectedAction;
+
+  @override
+  Widget build(BuildContext context) {
+    final isSuccess = state == ScanState.success;
+    final isQueued = state == ScanState.queued;
+
+    final Color bgColor = isSuccess
+        ? Colors.green.shade50
+        : isQueued
+            ? Colors.orange.shade50
+            : Colors.red.shade50;
+    final Color iconColor = isSuccess
+        ? Colors.green.shade600
+        : isQueued
+            ? Colors.orange.shade600
+            : Colors.red.shade600;
+    final IconData icon = isSuccess
+        ? Icons.check_circle_rounded
+        : isQueued
+            ? Icons.cloud_upload_rounded
+            : Icons.error_rounded;
+    final String title = isSuccess
+        ? 'Berhasil'
+        : isQueued
+            ? 'Tersimpan Offline'
+            : 'Gagal';
+
+    return Dialog(
+      shape:
+          RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(24, 28, 24, 20),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Container(
+              width: 64,
+              height: 64,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                color: bgColor,
+              ),
+              child: Icon(icon, size: 36, color: iconColor),
+            ),
+            const SizedBox(height: 16),
+            Text(title,
+                style: const TextStyle(
+                    fontSize: 18, fontWeight: FontWeight.w600)),
+            const SizedBox(height: 8),
+            if (detectedAction != null && isSuccess)
+              Container(
+                padding: const EdgeInsets.symmetric(
+                    horizontal: 12, vertical: 4),
+                margin: const EdgeInsets.only(bottom: 8),
+                decoration: BoxDecoration(
+                  color: Colors.blue.shade50,
+                  borderRadius: BorderRadius.circular(20),
+                ),
+                child: Text(
+                  _actionLabel(detectedAction!),
+                  style: TextStyle(
+                      fontSize: 12,
+                      color: Colors.blue.shade700,
+                      fontWeight: FontWeight.w600),
+                ),
+              ),
+            Text(
+              message,
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                  fontSize: 14,
+                  color: Colors.grey.shade600,
+                  height: 1.5),
+            ),
+            const SizedBox(height: 24),
+            SizedBox(
+              width: double.infinity,
+              child: FilledButton(
+                style: FilledButton.styleFrom(
+                  backgroundColor: iconColor,
+                  shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12)),
+                  padding: const EdgeInsets.symmetric(vertical: 14),
+                ),
+                onPressed: () => Navigator.of(context).pop(),
+                child: const Text('OK',
+                    style: TextStyle(fontSize: 15)),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  String _actionLabel(ScanAction a) {
+    switch (a) {
+      case ScanAction.checkIn:
+        return 'Check-In terdeteksi';
+      case ScanAction.checkOut:
+        return 'Check-Out terdeteksi';
+      case ScanAction.employeeEntry:
+        return 'Karyawan terdeteksi';
+    }
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Top bar button
+// ---------------------------------------------------------------------------
 
 class _TopBarButton extends StatelessWidget {
   const _TopBarButton({required this.icon, required this.onTap});
@@ -280,6 +372,58 @@ class _TopBarButton extends StatelessWidget {
     );
   }
 }
+
+// ---------------------------------------------------------------------------
+// Mode chip di top bar
+// ---------------------------------------------------------------------------
+
+class _ModeChip extends StatelessWidget {
+  const _ModeChip({
+    required this.label,
+    required this.isActive,
+    required this.onTap,
+    this.activeColor,
+  });
+
+  final String label;
+  final bool isActive;
+  final VoidCallback onTap;
+  final Color? activeColor;
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: onTap,
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 200),
+        padding:
+            const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+        decoration: BoxDecoration(
+          color: isActive
+              ? (activeColor ?? Colors.white)
+              : Colors.transparent,
+          borderRadius: BorderRadius.circular(16),
+        ),
+        child: Text(
+          label,
+          style: TextStyle(
+            fontSize: 12,
+            fontWeight: FontWeight.w600,
+            color: isActive
+                ? (activeColor != null
+                    ? Colors.white
+                    : Colors.black87)
+                : Colors.white70,
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Viewfinder
+// ---------------------------------------------------------------------------
 
 class _ScanViewfinder extends StatelessWidget {
   const _ScanViewfinder();
@@ -331,7 +475,7 @@ class _ViewfinderPainter extends CustomPainter {
       [
         Offset(size.width - len, size.height),
         Offset(size.width, size.height),
-        Offset(size.width, size.height - len)
+        Offset(size.width, size.height - len),
       ],
     ];
     for (final c in corners) {
