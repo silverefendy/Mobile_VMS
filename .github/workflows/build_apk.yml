@@ -40,36 +40,53 @@ jobs:
       - name: Analyze code (non-fatal)
         run: flutter analyze --no-fatal-infos || true
 
-      - name: Build APK (release, debug signing)
-        run: |
-          flutter build apk --release \
-            --dart-define=APP_ENV=production \
-            --dart-define=ENABLE_API_LOG=false \
-            --dart-define=ENABLE_SIGNED_QR=false
+      - name: Build APK langsung via Gradle (bypass flutter build)
+        working-directory: android
+        run: ./gradlew assembleRelease --no-daemon --stacktrace
         env:
           _JAVA_OPTIONS: "-Xmx3g -Xms512m"
           GRADLE_OPTS: "-Dorg.gradle.daemon=false -Dorg.gradle.jvmargs=-Xmx3g"
-          # Tidak set KEYSTORE_PATH — otomatis fallback ke debug signing
 
-      - name: Rename APK with timestamp
+      - name: Cari file APK yang dihasilkan
+        run: |
+          echo "=== Mencari APK ==="
+          find . -name "*.apk" -not -path "*/cache/*" 2>/dev/null
+          echo "=== Selesai ==="
+
+      - name: Rename dan pindah APK
         run: |
           TIMESTAMP=$(date +'%Y%m%d-%H%M')
-          mv build/app/outputs/flutter-apk/app-release.apk \
-             build/app/outputs/flutter-apk/mobile-vms-${TIMESTAMP}.apk
-          echo "APK_NAME=mobile-vms-${TIMESTAMP}.apk" >> $GITHUB_ENV
+          # Coba beberapa path output yang mungkin
+          APK_SRC=""
+          if [ -f "android/app/build/outputs/apk/release/app-release.apk" ]; then
+            APK_SRC="android/app/build/outputs/apk/release/app-release.apk"
+          elif [ -f "build/app/outputs/flutter-apk/app-release.apk" ]; then
+            APK_SRC="build/app/outputs/flutter-apk/app-release.apk"
+          elif [ -f "android/app/build/outputs/apk/release/app-release-unsigned.apk" ]; then
+            APK_SRC="android/app/build/outputs/apk/release/app-release-unsigned.apk"
+          else
+            echo "APK tidak ditemukan di path manapun!"
+            find . -name "*.apk" 2>/dev/null
+            exit 1
+          fi
+          mkdir -p dist
+          cp "$APK_SRC" "dist/mobile-vms-${TIMESTAMP}.apk"
+          echo "APK_PATH=dist/mobile-vms-${TIMESTAMP}.apk" >> $GITHUB_ENV
+          echo "APK ditemukan di: $APK_SRC"
+          echo "APK disalin ke: dist/mobile-vms-${TIMESTAMP}.apk"
 
       - name: Upload APK artifact
         uses: actions/upload-artifact@v4
         with:
           name: mobile-vms-apk
-          path: build/app/outputs/flutter-apk/mobile-vms-*.apk
+          path: dist/*.apk
           retention-days: 30
           if-no-files-found: error
 
       - name: Build summary
         run: |
           echo "## Build Sukses ✅" >> $GITHUB_STEP_SUMMARY
-          echo "**APK:** ${{ env.APK_NAME }}" >> $GITHUB_STEP_SUMMARY
+          echo "**APK:** ${{ env.APK_PATH }}" >> $GITHUB_STEP_SUMMARY
           echo "**Branch:** ${{ github.ref_name }}" >> $GITHUB_STEP_SUMMARY
           echo "**Commit:** ${{ github.sha }}" >> $GITHUB_STEP_SUMMARY
           echo '' >> $GITHUB_STEP_SUMMARY
