@@ -31,19 +31,33 @@ jobs:
           flutter --version
           java -version
 
-      - name: Generate gradle wrapper jar jika tidak ada
+      - name: Generate local.properties
         run: |
-          if [ ! -f android/gradle/wrapper/gradle-wrapper.jar ]; then
-            echo "Generating gradle wrapper..."
-            cd android && gradle wrapper --gradle-version 8.14.1 && cd ..
+          echo "sdk.dir=$ANDROID_HOME" > android/local.properties
+          echo "flutter.sdk=$FLUTTER_ROOT" >> android/local.properties
+          echo "flutter.versionName=1.0.0" >> android/local.properties
+          echo "flutter.versionCode=1" >> android/local.properties
+          echo "flutter.buildMode=release" >> android/local.properties
+          cat android/local.properties
+
+      - name: Download gradle-wrapper.jar jika tidak ada
+        run: |
+          JAR="android/gradle/wrapper/gradle-wrapper.jar"
+          if [ ! -f "$JAR" ]; then
+            echo "Mendownload gradle-wrapper.jar..."
+            mkdir -p android/gradle/wrapper
+            curl -fsSL \
+              "https://raw.githubusercontent.com/gradle/gradle/v8.14.1/gradle/wrapper/gradle-wrapper.jar" \
+              -o "$JAR"
+            echo "gradle-wrapper.jar berhasil didownload."
+          else
+            echo "gradle-wrapper.jar sudah ada."
           fi
-        env:
-          _JAVA_OPTIONS: "-Xmx1g"
 
       - name: Make gradlew executable
         run: chmod +x android/gradlew
 
-      - name: Pastikan debug.keystore tersedia untuk signing
+      - name: Generate debug.keystore
         run: |
           mkdir -p ~/.android
           if [ ! -f ~/.android/debug.keystore ]; then
@@ -52,9 +66,7 @@ jobs:
               -storepass android \
               -alias androiddebugkey \
               -keypass android \
-              -keyalg RSA \
-              -keysize 2048 \
-              -validity 10000 \
+              -keyalg RSA -keysize 2048 -validity 10000 \
               -dname "CN=Android Debug,O=Android,C=US"
             echo "debug.keystore dibuat."
           else
@@ -77,10 +89,10 @@ jobs:
           _JAVA_OPTIONS: "-Xmx3g -Xms512m"
           GRADLE_OPTS: "-Dorg.gradle.daemon=false -Dorg.gradle.jvmargs=-Xmx3g"
 
-      - name: Cari APK yang dihasilkan
+      - name: Cari APK (debug info)
         if: always()
         run: |
-          echo "=== Daftar semua APK ==="
+          echo "=== Semua file APK ==="
           find . -name "*.apk" -not -path "*/cache/*" 2>/dev/null || echo "Tidak ada APK"
 
       - name: Rename dan pindah APK
