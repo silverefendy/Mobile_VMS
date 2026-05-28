@@ -23,14 +23,22 @@ class AuthController extends ChangeNotifier {
   Future<void> restoreSession() async {
     status = AuthStatus.booting;
     notifyListeners();
+
     final existing = await _authRepository.restore();
     if (existing == null) {
       status = AuthStatus.unauthenticated;
       notifyListeners();
       return;
     }
+
     session = existing;
-    _apiClient.setAuthToken(existing.authHeader.isEmpty ? null : existing.authHeader);
+    // Restore CSRF token dari session yang tersimpan
+    if (existing.authHeader.isNotEmpty) {
+      _apiClient.setCsrfToken(existing.authHeader);
+    }
+    // Token auth (jika pakai API key — opsional)
+    _apiClient.setAuthToken(existing.authHeader.isEmpty ? null : null);
+
     status = AuthStatus.authenticated;
     notifyListeners();
   }
@@ -41,12 +49,14 @@ class AuthController extends ChangeNotifier {
     try {
       final result = await _authRepository.login(username: username, password: password);
       session = result;
-      _apiClient.setAuthToken(result.authHeader.isEmpty ? null : result.authHeader);
+      // CSRF token sudah di-set di dalam AuthRepositoryImpl.login()
+      // Token auth tidak diperlukan jika pakai session cookie
+      _apiClient.setAuthToken(null);
       status = AuthStatus.authenticated;
       notifyListeners();
       return true;
     } catch (e) {
-      error = e.toString();
+      error = e.toString().replaceFirst('AppException: ', '');
       status = AuthStatus.unauthenticated;
       notifyListeners();
       return false;
@@ -62,6 +72,7 @@ class AuthController extends ChangeNotifier {
     error = null;
     session = null;
     _apiClient.setAuthToken(null);
+    _apiClient.setCsrfToken(null);
     status = AuthStatus.unauthenticated;
     notifyListeners();
   }
