@@ -8,7 +8,7 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 45
 
     steps:
       - name: Checkout repository
@@ -26,10 +26,11 @@ jobs:
           channel: 'stable'
           cache: true
 
-      - name: Show Flutter & Java version
+      - name: Show versions
         run: |
           flutter --version
           java -version
+          echo "Gradle wrapper: $(cat android/gradle/wrapper/gradle-wrapper.properties | grep distributionUrl)"
 
       - name: Make gradlew executable
         run: chmod +x android/gradlew
@@ -47,7 +48,9 @@ jobs:
             --dart-define=ENABLE_API_LOG=false \
             --dart-define=ENABLE_SIGNED_QR=false
         env:
-          GRADLE_OPTS: "-Dorg.gradle.daemon=false"
+          # Override JVM heap untuk Gradle di CI — mencegah Java heap space error
+          _JAVA_OPTIONS: "-Xmx3g -Xms512m"
+          GRADLE_OPTS: "-Dorg.gradle.daemon=false -Dorg.gradle.jvmargs=-Xmx3g"
 
       - name: Rename APK with timestamp
         run: |
