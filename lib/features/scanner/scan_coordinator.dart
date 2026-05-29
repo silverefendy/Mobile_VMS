@@ -6,58 +6,55 @@ import 'package:flutter/services.dart';
 
 import '../../config/app_config.dart';
 import '../../core/connectivity/connectivity_service.dart';
+import '../../core/errors/app_exception.dart';
 import '../../core/logging/app_logger.dart';
 import '../../core/qr/qr_validation_service.dart';
 import '../../core/resilience/pending_operation_queue.dart';
 import '../../domain/models/operation_models.dart';
 import '../../domain/repositories/operations_repository.dart';
 
-enum ScanState { idle, scanning, processing, cooldown, success, error, queued }
-
-/// Apakah mode scanner otomatis (auto detect) atau manual
-enum ScanMode { auto, manual }
+enum ScanState {
+  idle,
+  scanning,
+  resolving,
+  awaitingConfirmation,
+  processing,
+  cooldown,
+  success,
+  error,
+  queued,
+}
 
 class ScanCoordinator extends ChangeNotifier {
-  ScanCoordinator(this._repo, this._connectivityService, this._qrValidationService);
+  ScanCoordinator(
+    this._repo,
+    this._connectivityService,
+    this._qrValidationService,
+  );
+
   final OperationsRepository _repo;
   final ConnectivityService _connectivityService;
   final QrValidationService _qrValidationService;
 
   final Queue<DateTime> _recentScanWindow = Queue<DateTime>();
-  // Cache per-code PER aksi agar tidak false-positive saat check-in lalu checkout
-  final Map<String, Map<String, DateTime>> _recentCodes = {};
+  final Map<String, DateTime> _recentCodes = {};
   final PendingOperationQueue _retryQueue = PendingOperationQueue();
 
   ScanState state = ScanState.idle;
   String feedback = 'Arahkan ke QR code';
   bool torchOn = false;
-
-  /// Mode aktif: auto = sistem otomatis pilih check-in / check-out
-  ScanMode scanMode = ScanMode.auto;
-
-  /// Aksi manual (dipakai kalau scanMode == manual)
-  ScanAction _manualAction = ScanAction.checkIn;
-  ScanAction get action => _manualAction;
-
-  /// Aksi yang dideteksi otomatis pada scan terakhir (untuk ditampilkan di UI)
-  ScanAction? lastDetectedAction;
+  ScanResolution? pendingConfirmation;
 
   bool _isProcessing = false;
+  DateTime? _lastProcessAt;
 
   bool get isBusy =>
-      _isProcessing || state == ScanState.processing || state == ScanState.cooldown;
+      _isProcessing ||
+      state == ScanState.resolving ||
+      state == ScanState.awaitingConfirmation ||
+      state == ScanState.processing ||
+      state == ScanState.cooldown;
   int get pendingRetryCount => _retryQueue.length;
-
-  void setScanMode(ScanMode mode) {
-    scanMode = mode;
-    notifyListeners();
-  }
-
-  void setAction(ScanAction next) {
-    _manualAction = next;
-    scanMode = ScanMode.manual;
-    notifyListeners();
-  }
 
   void toggleTorch() {
     torchOn = !torchOn;
@@ -70,13 +67,13 @@ class ScanCoordinator extends ChangeNotifier {
     notifyListeners();
   }
 
-  /// Reset state ke scanning setelah dialog ditutup oleh UI
   void resetAfterResult() {
     if (state == ScanState.success ||
         state == ScanState.error ||
         state == ScanState.queued) {
       state = ScanState.scanning;
       feedback = 'Siap scan berikutnya';
+      pendingConfirmation = null;
       notifyListeners();
     }
   }
@@ -94,19 +91,15 @@ class ScanCoordinator extends ChangeNotifier {
     final now = DateTime.now();
     if (isBusy) return;
     if (_lastProcessAt != null &&
-        now.difference(_lastProcessAt!).inMilliseconds < 900) return;
-
-    // Debounce identical camera frames without showing another blocking dialog.
-    // The camera is also stopped by ScannerScreen while this method runs.
-    final codeCache = _recentCodes[rawCode];
-    final actionKey = scanMode == ScanMode.auto ? 'auto' : _manualAction.name;
-    final lastAt = codeCache?[actionKey];
-    if (lastAt != null && now.difference(lastAt).inMilliseconds < 1200) {
+        now.difference(_lastProcessAt!).inMilliseconds < 900) {
       return;
     }
 
-    // Simpan ke cache dengan key aksi
-    _recentCodes.putIfAbsent(rawCode, () => {})[actionKey] = now;
+    final lastAt = _recentCodes[rawCode];
+    if (lastAt != null && now.difference(lastAt).inMilliseconds < 1200) {
+      return;
+    }
+    _recentCodes[rawCode] = now;
 
     _recentScanWindow.add(now);
     while (_recentScanWindow.isNotEmpty &&
@@ -115,101 +108,121 @@ class ScanCoordinator extends ChangeNotifier {
     }
 
     _isProcessing = true;
-    state = ScanState.processing;
-    feedback = 'Memproses...';
+    state = ScanState.resolving;
+    feedback = 'Membaca aksi dari backend...';
+    pendingConfirmation = null;
     notifyListeners();
 
     try {
       if (AppConfig.enableOfflineQueue &&
           !await _connectivityService.isOnline()) {
-        final offlineAction =
-            scanMode == ScanMode.auto ? ScanAction.checkIn : _manualAction;
-        _retryQueue.enqueue(PendingOperation(
-          id: rawCode.hashCode.toString(),
-          payload: {'rawCode': rawCode, 'action': offlineAction.name},
-          createdAt: DateTime.now(),
-        ));
-        state = ScanState.queued;
-        feedback = 'Offline - scan antri (${_retryQueue.length})';
+        state = ScanState.error;
+        feedback = 'Offline - aksi scan harus dikonfirmasi backend terlebih dahulu';
+        HapticFeedback.vibrate();
         notifyListeners();
         return;
       }
 
-      if (scanMode == ScanMode.auto) {
-        await _processAuto(rawCode);
-      } else {
-        await _process(rawCode, _manualAction);
-      }
+      final resolution = await _repo.resolveScanAction(rawCode: rawCode);
+      pendingConfirmation = resolution;
+      state = ScanState.awaitingConfirmation;
+      feedback = 'Konfirmasi aksi ${resolution.nextAction}';
+      AppLogger.event('scan_action_resolved', payload: {
+        'entity': resolution.entityType.name,
+        'action': resolution.nextAction,
+      });
+      notifyListeners();
+    } on AppException catch (e) {
+      state = ScanState.error;
+      feedback = e.message.isEmpty ? 'Gagal membaca aksi scan' : e.message;
+      HapticFeedback.vibrate();
+      notifyListeners();
+    } catch (_) {
+      state = ScanState.error;
+      feedback = 'Terjadi kesalahan, coba lagi';
+      HapticFeedback.vibrate();
+      notifyListeners();
     } finally {
-      // Lifecycle-critical: never leave the coordinator busy after a dialog,
-      // navigation event, network timeout, or backend error.
       _isProcessing = false;
       _lastProcessAt = DateTime.now();
       notifyListeners();
     }
   }
 
-  /// Auto-detect: active/open visit => check-out, otherwise check-in.
-  Future<void> _processAuto(String rawCode) async {
-    final detectedAction = await _repo.determineVisitAction(rawCode: rawCode);
-    lastDetectedAction = detectedAction;
+  void cancelPendingScan() {
+    final rawCode = pendingConfirmation?.rawCode;
+    if (rawCode != null) _recentCodes.remove(rawCode);
+    pendingConfirmation = null;
+    state = ScanState.scanning;
+    feedback = 'Scan dibatalkan';
+    _lastProcessAt = DateTime.now();
     notifyListeners();
-    await _process(rawCode, detectedAction);
   }
 
-  DateTime? _lastProcessAt;
+  Future<void> confirmPendingScan() async {
+    final resolution = pendingConfirmation;
+    if (resolution == null || _isProcessing) return;
+
+    _isProcessing = true;
+    state = ScanState.processing;
+    feedback = 'Menjalankan ${resolution.nextAction}...';
+    notifyListeners();
+
+    try {
+      final result = await _repo.executeScanAction(resolution: resolution);
+      _lastProcessAt = DateTime.now();
+      AppLogger.event('scan_action_executed', payload: {
+        'outcome': result.type.name,
+        'action': resolution.nextAction,
+        'entity': resolution.entityType.name,
+      });
+
+      if (result.type == ScanOutcomeType.success) {
+        state = ScanState.success;
+        feedback = result.message;
+        HapticFeedback.heavyImpact();
+        await SystemSound.play(SystemSoundType.click);
+        _recentCodes.remove(resolution.rawCode);
+      } else {
+        state = ScanState.error;
+        feedback = result.message;
+        HapticFeedback.vibrate();
+      }
+    } catch (_) {
+      _lastProcessAt = DateTime.now();
+      state = ScanState.error;
+      feedback = 'Terjadi kesalahan, coba lagi';
+      HapticFeedback.vibrate();
+    } finally {
+      pendingConfirmation = null;
+      _isProcessing = false;
+      notifyListeners();
+    }
+  }
 
   Future<void> retryPending() async {
     if (!await _connectivityService.isOnline()) return;
     while (!_retryQueue.isEmpty) {
       final op = _retryQueue.dequeue();
       if (op == null) return;
-      final actionName =
-          (op.payload['action'] ?? ScanAction.checkIn.name).toString();
-      final queuedAction = ScanAction.values.firstWhere(
-        (e) => e.name == actionName,
-        orElse: () => ScanAction.checkIn,
+      final rawCode = op.payload['rawCode']?.toString();
+      final nextAction = op.payload['action']?.toString();
+      if (rawCode == null || nextAction == null || nextAction.isEmpty) continue;
+      pendingConfirmation = ScanResolution(
+        rawCode: rawCode,
+        entityType: ScanEntityType.unknown,
+        currentStatus: '',
+        nextAction: nextAction,
       );
-      await _process(op.payload['rawCode'].toString(), queuedAction);
+      await confirmPendingScan();
     }
-  }
-
-  Future<void> _process(String rawCode, ScanAction resolvedAction) async {
-    try {
-      final result =
-          await _repo.processScan(rawCode: rawCode, action: resolvedAction);
-      _lastProcessAt = DateTime.now();
-      AppLogger.event('scan_processed',
-          payload: {'outcome': result.type.name, 'action': resolvedAction.name});
-
-      if (result.type == ScanOutcomeType.success) {
-        state = ScanState.success;
-        feedback = result.message;
-        HapticFeedback.heavyImpact();
-        SystemSound.play(SystemSoundType.click);
-        // Bersihkan cache kode ini agar scan berikutnya bisa langsung diproses
-        _recentCodes.remove(rawCode);
-      } else {
-        state = ScanState.error;
-        feedback = result.message;
-        HapticFeedback.vibrate();
-      }
-    } catch (e) {
-      _lastProcessAt = DateTime.now();
-      state = ScanState.error;
-      feedback = 'Terjadi kesalahan, coba lagi';
-      HapticFeedback.vibrate();
-    }
-    notifyListeners();
-    // Tidak lagi auto-reset ke scanning di sini.
-    // UI yang akan panggil resetAfterResult() setelah dialog ditutup.
   }
 
   void setReady() {
     _isProcessing = false;
     state = ScanState.scanning;
     feedback = 'Arahkan ke QR code';
-    lastDetectedAction = null;
+    pendingConfirmation = null;
     notifyListeners();
   }
 }

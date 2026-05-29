@@ -1,6 +1,31 @@
 enum ScanOutcomeType { success, invalid, duplicate, expired, alreadyCheckedIn, alreadyCheckedOut, networkError, unauthorized, unknown }
 
-enum ScanAction { checkIn, checkOut, employeeEntry }
+enum ScanEntityType { visitor, employee, unknown }
+
+class ScanResolution {
+  const ScanResolution({
+    required this.rawCode,
+    required this.entityType,
+    required this.currentStatus,
+    required this.nextAction,
+    this.visitorName,
+    this.company,
+    this.employeeName,
+    this.referenceId,
+  });
+
+  final String rawCode;
+  final ScanEntityType entityType;
+  final String currentStatus;
+  final String nextAction;
+  final String? visitorName;
+  final String? company;
+  final String? employeeName;
+  final String? referenceId;
+
+  bool get isVisitor => entityType == ScanEntityType.visitor;
+  bool get isEmployee => entityType == ScanEntityType.employee;
+}
 
 class ScanOutcome {
   const ScanOutcome({required this.type, required this.message, this.referenceId});
