@@ -31,7 +31,14 @@ class _DashboardSectionState extends State<DashboardSection>
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.resumed && mounted) {
-      context.read<DashboardController>().refresh(force: true);
+      final controller = context.read<DashboardController>();
+
+      // Hindari refresh agresif setiap kembali dari background.
+      // Dashboard lama tetap ditampilkan agar user tidak perlu login ulang
+      // ketika koneksi/session sedang delay sesaat.
+      if (controller.cards.isEmpty && !controller.loading) {
+        controller.refresh();
+      }
     }
   }
 
@@ -39,7 +46,7 @@ class _DashboardSectionState extends State<DashboardSection>
   Widget build(BuildContext context) {
     final vm = context.watch<DashboardController>();
 
-    if (vm.loading) {
+    if (vm.loading && vm.cards.isEmpty) {
       return const SizedBox(
         height: 120,
         child: Center(
@@ -48,7 +55,7 @@ class _DashboardSectionState extends State<DashboardSection>
       );
     }
 
-    if (vm.error != null) {
+    if (vm.error != null && vm.cards.isEmpty) {
       return Container(
         padding: const EdgeInsets.all(14),
         decoration: BoxDecoration(
@@ -69,7 +76,6 @@ class _DashboardSectionState extends State<DashboardSection>
             IconButton(
               icon: const Icon(Icons.refresh_rounded),
               color: Colors.red.shade400,
-              // Panggil refresh dengan benar — bungkus di callback async
               onPressed: () => context.read<DashboardController>().refresh(),
               iconSize: 20,
             ),
@@ -98,7 +104,7 @@ class _DashboardSectionState extends State<DashboardSection>
               ),
             ),
             GestureDetector(
-              onTap: () => context.read<DashboardController>().refresh(),
+              onTap: () => context.read<DashboardController>().refresh(force: true),
               child: const Icon(Icons.refresh_rounded,
                   size: 18, color: Color(0xFF1E3A8A)),
             ),
