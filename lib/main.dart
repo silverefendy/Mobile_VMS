@@ -1,4 +1,6 @@
+import 'package:cookie_jar/cookie_jar.dart';
 import 'package:flutter/material.dart';
+import 'package:path_provider/path_provider.dart';
 import 'package:provider/provider.dart';
 
 import 'app.dart';
@@ -21,10 +23,15 @@ import 'features/activity/activity_controller.dart';
 import 'core/settings/settings_controller.dart';
 import 'features/dashboard/dashboard_controller.dart';
 
-void main() {
+Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
-  final apiClient = ApiClient();
+  final supportDir = await getApplicationSupportDirectory();
+  final cookieJar = PersistCookieJar(
+    ignoreExpires: false,
+    storage: FileStorage('${supportDir.path}/erpnext_cookies'),
+  );
+  final apiClient = ApiClient(cookieJar: cookieJar);
   final sessionStorage = SecureSessionStorage();
   final authRepository = AuthRepositoryImpl(apiClient: apiClient, storage: sessionStorage);
   final menuRepository = MenuRepositoryImpl(apiClient: apiClient);

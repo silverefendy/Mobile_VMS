@@ -1,15 +1,16 @@
+import 'dart:async';
+
 import 'package:cookie_jar/cookie_jar.dart';
 import 'package:dio/dio.dart';
 import 'package:dio_cookie_manager/dio_cookie_manager.dart';
-import 'package:flutter/foundation.dart';
 
 import '../../config/app_config.dart';
 import '../errors/app_exception.dart';
 import '../logging/app_logger.dart';
 
 class ApiClient {
-  ApiClient() {
-    _cookieJar = CookieJar();
+  ApiClient({CookieJar? cookieJar}) {
+    _cookieJar = cookieJar ?? CookieJar();
 
     _dio = Dio(
       BaseOptions(
@@ -23,7 +24,9 @@ class ApiClient {
       ),
     );
 
-    // Cookie manager — wajib untuk session Frappe
+    // Cookie manager — wajib untuk session Frappe. In production Android builds
+    // this is backed by PersistCookieJar from main.dart so sid cookies survive
+    // process death/removal from recents and are restored before auth validation.
     _dio.interceptors.add(CookieManager(_cookieJar));
 
     _dio.interceptors.add(
@@ -34,7 +37,9 @@ class ApiClient {
             options.headers['Authorization'] = _token;
           }
           // Kirim CSRF token untuk semua POST request ke Frappe
-          if (options.method == 'POST' && _csrfToken != null && _csrfToken!.isNotEmpty) {
+          if (options.method == 'POST' &&
+              _csrfToken != null &&
+              _csrfToken!.isNotEmpty) {
             options.headers['X-Frappe-CSRF-Token'] = _csrfToken;
           }
           if (AppConfig.enableApiLog) {
@@ -52,8 +57,11 @@ class ApiClient {
         },
         onError: (error, handler) {
           final status = error.response?.statusCode;
-          if (status == 401) {
-            _onUnauthorized?.call();
+          if (status == 401 || status == 403) {
+            final logout = _onUnauthorized;
+            if (logout != null) {
+              unawaited(logout());
+            }
           }
           if (AppConfig.enableApiLog) {
             AppLogger.error('api_error',
@@ -70,15 +78,16 @@ class ApiClient {
   late final CookieJar _cookieJar;
   String? _token;
   String? _csrfToken;
-  VoidCallback? _onUnauthorized;
+  Future<void> Function()? _onUnauthorized;
 
-  void setUnauthorizedHandler(VoidCallback callback) => _onUnauthorized = callback;
+  void setUnauthorizedHandler(Future<void> Function() callback) =>
+      _onUnauthorized = callback;
 
   void setAuthToken(String? token) => _token = token;
 
   void setCsrfToken(String? token) => _csrfToken = token;
 
-  /// Clear semua cookies (dipakai saat logout)
+  /// Clear semua cookies (dipakai saat logout/session invalid)
   Future<void> clearCookies() async {
     await _cookieJar.deleteAll();
   }
@@ -94,8 +103,13 @@ class ApiClient {
     try {
       return await request();
     } on DioException catch (e) {
+      final data = e.response?.data;
+      String? serverMessage;
+      if (data is Map<String, dynamic>) {
+        serverMessage = data['message']?.toString();
+      }
       throw AppException(
-        e.response?.data?['message']?.toString() ?? e.message ?? 'Network error',
+        serverMessage ?? e.message ?? 'Network error',
         statusCode: e.response?.statusCode,
       );
     } catch (_) {

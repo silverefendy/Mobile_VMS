@@ -16,7 +16,6 @@ class _LoginScreenState extends State<LoginScreen> {
   final _formKey = GlobalKey<FormState>();
   bool _submitting = false;
 
-
   @override
   void dispose() {
     _usernameController.dispose();
@@ -28,11 +27,16 @@ class _LoginScreenState extends State<LoginScreen> {
     if (!_formKey.currentState!.validate()) return;
     final auth = context.read<AuthController>();
     setState(() => _submitting = true);
-    final ok = await auth.login(_usernameController.text.trim(), _passwordController.text);
+    final ok = await auth.login(
+      _usernameController.text.trim(),
+      _passwordController.text,
+    );
     if (!mounted) return;
     setState(() => _submitting = false);
     if (!ok) {
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(auth.error ?? 'Login failed')));
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(auth.error ?? 'Login failed')),
+      );
     }
   }
 
@@ -47,37 +51,75 @@ class _LoginScreenState extends State<LoginScreen> {
               padding: const EdgeInsets.all(20),
               child: Form(
                 key: _formKey,
-                child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
-                  const Icon(Icons.security, size: 72),
-                  const SizedBox(height: 12),
-                  const Text('Mobile VMS', style: TextStyle(fontSize: 28, fontWeight: FontWeight.w700)),
-                  const SizedBox(height: 24),
-                  TextFormField(
-                    controller: _usernameController,
-                    decoration: const InputDecoration(labelText: 'Username'),
-                    textInputAction: TextInputAction.next,
-                    validator: (value) => (value == null || value.trim().isEmpty) ? 'Username is required' : null,
-                  ),
-                  const SizedBox(height: 12),
-                  TextFormField(
-                    controller: _passwordController,
-                    decoration: const InputDecoration(labelText: 'Password'),
-                    obscureText: true,
-                    onFieldSubmitted: (_) => _submit(context),
-                    validator: (value) => (value == null || value.isEmpty) ? 'Password is required' : null,
-                  ),
-                  const SizedBox(height: 20),
-                  SizedBox(
-                    width: double.infinity,
-                    height: 52,
-                    child: FilledButton(
-                      onPressed: _submitting ? null : () => _submit(context),
-                      child: _submitting
-                          ? const SizedBox(width: 24, height: 24, child: CircularProgressIndicator(strokeWidth: 2.4))
-                          : const Text('Sign In'),
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Container(
+                      width: 76,
+                      height: 76,
+                      decoration: BoxDecoration(
+                        color: const Color(0xFF0F2A5F),
+                        borderRadius: BorderRadius.circular(22),
+                      ),
+                      child: const Icon(
+                        Icons.shield_rounded,
+                        size: 48,
+                        color: Colors.white,
+                      ),
                     ),
-                  )
-                ]),
+                    const SizedBox(height: 14),
+                    const Text(
+                      'VMS',
+                      style: TextStyle(
+                        fontSize: 30,
+                        fontWeight: FontWeight.w800,
+                        color: Color(0xFF0F2A5F),
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    const Text(
+                      'Visitor Management System',
+                      style: TextStyle(fontSize: 13, color: Color(0xFF64748B)),
+                    ),
+                    const SizedBox(height: 24),
+                    TextFormField(
+                      controller: _usernameController,
+                      decoration: const InputDecoration(labelText: 'Username'),
+                      textInputAction: TextInputAction.next,
+                      validator: (value) =>
+                          (value == null || value.trim().isEmpty)
+                              ? 'Username is required'
+                              : null,
+                    ),
+                    const SizedBox(height: 12),
+                    TextFormField(
+                      controller: _passwordController,
+                      decoration: const InputDecoration(labelText: 'Password'),
+                      obscureText: true,
+                      onFieldSubmitted: (_) => _submit(context),
+                      validator: (value) => (value == null || value.isEmpty)
+                          ? 'Password is required'
+                          : null,
+                    ),
+                    const SizedBox(height: 20),
+                    SizedBox(
+                      width: double.infinity,
+                      height: 52,
+                      child: FilledButton(
+                        onPressed: _submitting ? null : () => _submit(context),
+                        child: _submitting
+                            ? const SizedBox(
+                                width: 24,
+                                height: 24,
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2.4,
+                                ),
+                              )
+                            : const Text('Sign In'),
+                      ),
+                    ),
+                  ],
+                ),
               ),
             ),
           ),

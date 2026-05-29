@@ -109,7 +109,13 @@ class AuthRepositoryImpl implements AuthRepository {
     try {
       await _apiClient.post('/api/method/logout');
     } catch (_) {}
-    // Hapus cookie sesi Frappe
+    await clearLocalAuthState();
+  }
+
+  @override
+  Future<void> clearLocalAuthState() async {
+    // Hapus cookie sesi Frappe dan state auth lokal agar app tidak pernah
+    // tersangkut dalam kondisi dashboard authenticated palsu.
     await _apiClient.clearCookies();
     await _storage.clear();
   }
