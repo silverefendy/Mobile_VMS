@@ -8,114 +8,165 @@ class OperationsRepositoryImpl implements OperationsRepository {
   final ApiClient _apiClient;
 
   @override
-  Future<ScanOutcome> processScan(
-      {required String rawCode, required ScanAction action}) async {
+  Future<ScanResolution> resolveScanAction({required String rawCode}) async {
     try {
-      final result = await _postScan(rawCode: rawCode, action: action.name);
-      final shouldRetryWithBackendAlias =
-          (result.type == ScanOutcomeType.invalid ||
-                  result.type == ScanOutcomeType.unknown) &&
-              result.message.toLowerCase().contains('action');
-      if (shouldRetryWithBackendAlias) {
-        return _postScan(rawCode: rawCode, action: _actionApiValue(action));
+      final response = await _apiClient.post<Map<String, dynamic>>(
+        '/api/method/visitor_management.mobile.resolve_scan_action',
+        data: {'qr_code': rawCode},
+      );
+      final message = _messageMap(response.data);
+      final visitor =
+          _nestedMap(message, const ['visitor', 'visitor_info', 'visitorInfo']);
+      final employee = _nestedMap(
+          message, const ['employee', 'employee_info', 'employeeInfo']);
+      final nextAction = _stringFrom(message, const [
+        'next_action',
+        'nextAction',
+        'action',
+      ]);
+
+      if (nextAction.isEmpty) {
+        throw AppException('Backend tidak mengirim next_action');
       }
-      return result;
+
+      return ScanResolution(
+        rawCode: rawCode,
+        entityType: _entityType(_stringFrom(message, const [
+          'entity_type',
+          'entityType',
+          'type',
+        ])),
+        currentStatus: _stringFrom(message, const [
+          'current_status',
+          'currentStatus',
+          'status',
+        ]),
+        nextAction: nextAction,
+        visitorName: _stringOrNullFrom([message, visitor], const [
+          'visitor_name',
+          'visitorName',
+          'full_name',
+          'fullName',
+          'name',
+        ]),
+        company: _stringOrNullFrom([message, visitor], const [
+          'company',
+          'company_name',
+          'companyName',
+          'organization',
+        ]),
+        employeeName: _stringOrNullFrom([message, employee, visitor], const [
+          'employee_name',
+          'employeeName',
+          'host_name',
+          'hostName',
+          'full_name',
+          'fullName',
+          'name',
+        ]),
+        referenceId: _stringOrNull(message, const [
+          'reference_id',
+          'referenceId',
+          'id',
+        ]),
+      );
+    } on AppException {
+      rethrow;
+    } catch (_) {
+      throw AppException('Gagal membaca aksi scan dari backend');
+    }
+  }
+
+  @override
+  Future<ScanOutcome> executeScanAction(
+      {required ScanResolution resolution}) async {
+    try {
+      final response = await _apiClient.post<Map<String, dynamic>>(
+        '/api/method/visitor_management.mobile.execute_scan_action',
+        data: {
+          'qr_code': resolution.rawCode,
+          'action': resolution.nextAction,
+        },
+      );
+      final message = _messageMap(response.data);
+      final status = _stringFrom(message, const ['status'], fallback: 'unknown');
+      return ScanOutcome(
+        type: _toOutcome(status),
+        message: _stringFrom(message, const ['message'], fallback: 'Diproses'),
+        referenceId:
+            _stringOrNull(message, const ['reference_id', 'referenceId']),
+      );
     } on AppException catch (e) {
       if (e.statusCode == 401) {
         return const ScanOutcome(
             type: ScanOutcomeType.unauthorized,
             message: 'Sesi habis, silakan login ulang');
       }
-      return const ScanOutcome(
-          type: ScanOutcomeType.networkError,
-          message: 'Jaringan bermasalah, coba lagi');
-    }
-  }
-
-  Future<ScanOutcome> _postScan({
-    required String rawCode,
-    required String action,
-  }) async {
-    final response = await _apiClient.post<Map<String, dynamic>>(
-      '/api/method/visitor_management.mobile.process_scan',
-      data: {'qr_code': rawCode, 'action': action},
-    );
-    final message =
-        response.data?['message'] as Map<String, dynamic>? ?? const {};
-    final status = (message['status'] ?? 'unknown').toString();
-    return ScanOutcome(
-      type: _toOutcome(status),
-      message: (message['message'] ?? 'Diproses').toString(),
-      referenceId: message['reference_id']?.toString(),
-    );
-  }
-
-  String _actionApiValue(ScanAction action) {
-    switch (action) {
-      case ScanAction.checkIn:
-        return 'check_in';
-      case ScanAction.checkOut:
-        return 'check_out';
-      case ScanAction.employeeEntry:
-        return 'employee_entry';
-    }
-  }
-
-
-  @override
-  Future<ScanAction> determineVisitAction({required String rawCode}) async {
-    try {
-      final response = await _apiClient.get<Map<String, dynamic>>(
-        '/api/method/visitor_management.visitor_management.api.get_visitor_by_qr',
-        queryParameters: {'qr_data': rawCode},
+      return ScanOutcome(
+        type: ScanOutcomeType.networkError,
+        message:
+            e.message.isEmpty ? 'Jaringan bermasalah, coba lagi' : e.message,
       );
-      final msg = response.data?['message'];
-      if (msg is Map<String, dynamic>) {
-        return _hasActiveVisit(msg) ? ScanAction.checkOut : ScanAction.checkIn;
-      }
-    } catch (_) {
-      // Let the normal process_scan endpoint surface invalid/expired/network
-      // errors; defaulting to check-in keeps the scanner recoverable.
     }
-    return ScanAction.checkIn;
   }
 
-  bool _hasActiveVisit(Map<String, dynamic> payload) {
-    final activeVisit = payload['active_visit'] ??
-        payload['activeVisit'] ??
-        payload['visit'] ??
-        payload['current_visit'] ??
-        payload['currentVisit'];
-    if (activeVisit is Map<String, dynamic> && activeVisit.isNotEmpty) {
-      final checkout = (activeVisit['check_out_time'] ??
-              activeVisit['checkout_time'] ??
-              activeVisit['checked_out_at'])
-          ?.toString()
-          .trim();
-      if (checkout == null || checkout.isEmpty) return true;
-    }
-    if (activeVisit is List && activeVisit.isNotEmpty) return true;
-    if (payload['has_active_visit'] == true || payload['is_checked_in'] == true) {
-      return true;
-    }
+  Map<String, dynamic> _messageMap(Map<String, dynamic>? data) {
+    final message = data?['message'];
+    if (message is Map<String, dynamic>) return message;
+    if (data == null) return const {};
+    return data;
+  }
 
-    final rawStatus = (payload['status'] ?? payload['visit_status'] ?? '')
-        .toString()
-        .trim()
-        .toLowerCase()
-        .replaceAll('_', ' ')
-        .replaceAll('-', ' ');
-    const activeStatuses = {
-      'checked in',
-      'check in',
-      'active',
-      'open',
-      'on site',
-      'onsite',
-      'in progress',
-      'arrived',
-    };
-    return activeStatuses.contains(rawStatus);
+  String _stringFrom(
+    Map<String, dynamic> payload,
+    List<String> keys, {
+    String fallback = '',
+  }) {
+    for (final key in keys) {
+      final value = payload[key];
+      if (value != null && value.toString().trim().isNotEmpty) {
+        return value.toString().trim();
+      }
+    }
+    return fallback;
+  }
+
+  String? _stringOrNull(Map<String, dynamic> payload, List<String> keys) {
+    final value = _stringFrom(payload, keys);
+    return value.isEmpty ? null : value;
+  }
+
+  String? _stringOrNullFrom(
+    List<Map<String, dynamic>> payloads,
+    List<String> keys,
+  ) {
+    for (final payload in payloads) {
+      final value = _stringOrNull(payload, keys);
+      if (value != null) return value;
+    }
+    return null;
+  }
+
+  Map<String, dynamic> _nestedMap(
+    Map<String, dynamic> payload,
+    List<String> keys,
+  ) {
+    for (final key in keys) {
+      final value = payload[key];
+      if (value is Map<String, dynamic>) return value;
+    }
+    return const {};
+  }
+
+  ScanEntityType _entityType(String value) {
+    switch (value.trim().toUpperCase()) {
+      case 'VISITOR':
+        return ScanEntityType.visitor;
+      case 'EMPLOYEE':
+        return ScanEntityType.employee;
+      default:
+        return ScanEntityType.unknown;
+    }
   }
 
   @override

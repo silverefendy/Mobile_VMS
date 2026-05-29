@@ -15,7 +15,6 @@ class ScannerScreen extends StatefulWidget {
 class _ScannerScreenState extends State<ScannerScreen>
     with WidgetsBindingObserver {
   final MobileScannerController _controller = MobileScannerController(
-    formats: [BarcodeFormat.qrCode],
     detectionSpeed: DetectionSpeed.normal,
     autoStart: false,
   );
@@ -108,7 +107,22 @@ class _ScannerScreenState extends State<ScannerScreen>
 
       if (!mounted) return;
 
-      if (_hasResult(scan.state)) {
+      if (scan.state == ScanState.awaitingConfirmation &&
+          scan.pendingConfirmation != null) {
+        final confirmed = await _showConfirmationDialog(scan.pendingConfirmation!);
+        if (!mounted) return;
+
+        if (confirmed) {
+          await scan.confirmPendingScan();
+          if (!mounted) return;
+          if (_hasResult(scan.state)) {
+            await _showResultDialog(scan);
+          }
+        } else {
+          scan.cancelPendingScan();
+          _showSnackBar('Scan dibatalkan');
+        }
+      } else if (_hasResult(scan.state)) {
         await _showResultDialog(scan);
       }
     } finally {
@@ -121,6 +135,22 @@ class _ScannerScreenState extends State<ScannerScreen>
     }
   }
 
+  Future<bool> _showConfirmationDialog(ScanResolution resolution) async {
+    if (_dialogShowing) return false;
+
+    _dialogShowing = true;
+    try {
+      final confirmed = await showDialog<bool>(
+        context: context,
+        barrierDismissible: false,
+        builder: (_) => _ScanConfirmationDialog(resolution: resolution),
+      );
+      return confirmed ?? false;
+    } finally {
+      _dialogShowing = false;
+    }
+  }
+
   Future<void> _showResultDialog(ScanCoordinator scan) async {
     if (_dialogShowing || !_hasResult(scan.state)) return;
 
@@ -128,7 +158,6 @@ class _ScannerScreenState extends State<ScannerScreen>
 
     final capturedState = scan.state;
     final capturedMsg = scan.feedback;
-    final capturedAction = scan.lastDetectedAction;
 
     try {
       await showDialog<void>(
@@ -137,17 +166,31 @@ class _ScannerScreenState extends State<ScannerScreen>
         builder: (_) => _ResultDialog(
           state: capturedState,
           message: capturedMsg,
-          detectedAction: capturedAction,
         ),
       );
+      if (mounted) {
+        _showSnackBar(capturedMsg, isError: capturedState != ScanState.success);
+      }
     } finally {
       _dialogShowing = false;
     }
   }
 
+  void _showSnackBar(String message, {bool isError = false}) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(message),
+        backgroundColor: isError ? Colors.red.shade700 : Colors.green.shade700,
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final scan = context.watch<ScanCoordinator>();
+    final isLoading =
+        scan.state == ScanState.resolving || scan.state == ScanState.processing;
 
     return Scaffold(
       backgroundColor: Colors.black,
@@ -189,17 +232,128 @@ class _ScannerScreenState extends State<ScannerScreen>
                   borderRadius: BorderRadius.circular(12),
                 ),
                 child: const Text(
-                  'Scan QR — sistem otomatis memilih check-in / check-out',
+                  'Scan QR — aplikasi mengikuti next_action dari backend',
                   textAlign: TextAlign.center,
                   style: TextStyle(color: Colors.white70, fontSize: 13),
                 ),
               ),
             ),
 
-          if (scan.state == ScanState.processing)
-            const Center(
-              child: CircularProgressIndicator(color: Colors.white),
+          if (isLoading)
+            Container(
+              color: Colors.black45,
+              child: Center(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const CircularProgressIndicator(color: Colors.white),
+                    const SizedBox(height: 16),
+                    Text(
+                      scan.feedback,
+                      textAlign: TextAlign.center,
+                      style: const TextStyle(color: Colors.white),
+                    ),
+                  ],
+                ),
+              ),
             ),
+        ],
+      ),
+    );
+  }
+}
+
+class _ScanConfirmationDialog extends StatelessWidget {
+  const _ScanConfirmationDialog({required this.resolution});
+
+  final ScanResolution resolution;
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog.adaptive(
+      title: Text(_title),
+      content: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: _contentRows
+            .map(
+              (row) => Padding(
+                padding: const EdgeInsets.only(bottom: 8),
+                child: _InfoRow(label: row.$1, value: row.$2),
+              ),
+            )
+            .toList(),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.of(context).pop(false),
+          child: const Text('Cancel'),
+        ),
+        FilledButton(
+          onPressed: () => Navigator.of(context).pop(true),
+          child: const Text('OK'),
+        ),
+      ],
+    );
+  }
+
+  String get _title {
+    final normalizedAction = resolution.nextAction.toUpperCase();
+    final isOutbound = normalizedAction.contains('OUT');
+
+    if (_isEmployeeAction) {
+      return isOutbound ? 'Employee Check Out?' : 'Employee Check In?';
+    }
+    if (resolution.isVisitor) {
+      return isOutbound ? 'Check Out Visitor?' : 'Check In Visitor?';
+    }
+    return 'Confirm Scan Action?';
+  }
+
+  bool get _isEmployeeAction =>
+      resolution.isEmployee || resolution.nextAction.toUpperCase().startsWith('EMPLOYEE');
+
+  List<(String, String)> get _contentRows {
+    final status = _displayValue(resolution.currentStatus);
+    if (_isEmployeeAction) {
+      return [
+        ('Nama', _displayValue(resolution.employeeName)),
+        ('Status', status),
+      ];
+    }
+
+    return [
+      ('Nama', _displayValue(resolution.visitorName)),
+      ('Perusahaan', _displayValue(resolution.company)),
+      ('Tujuan', _displayValue(resolution.employeeName)),
+      ('Status', status),
+    ];
+  }
+
+  String _displayValue(String? value) {
+    final normalized = value?.trim();
+    return normalized == null || normalized.isEmpty ? '-' : normalized;
+  }
+}
+
+class _InfoRow extends StatelessWidget {
+  const _InfoRow({required this.label, required this.value});
+
+  final String label;
+  final String value;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return RichText(
+      text: TextSpan(
+        style: theme.textTheme.bodyMedium,
+        children: [
+          TextSpan(
+            text: '$label:\n',
+            style: const TextStyle(fontWeight: FontWeight.w700),
+          ),
+          TextSpan(text: value),
         ],
       ),
     );
@@ -210,16 +364,14 @@ class _ResultDialog extends StatelessWidget {
   const _ResultDialog({
     required this.state,
     required this.message,
-    this.detectedAction,
   });
 
   final ScanState state;
   final String message;
-  final ScanAction? detectedAction;
 
   @override
   Widget build(BuildContext context) {
-    return AlertDialog(
+    return AlertDialog.adaptive(
       title: Text(state == ScanState.success ? 'Berhasil' : 'Gagal'),
       content: Text(message),
       actions: [
