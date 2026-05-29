@@ -6,5 +6,5 @@ class BrandTheme {
   final Color seedColor;
   final String? logoUrl;
 
-  static const fallback = BrandTheme(appName: 'Mobile VMS', seedColor: Colors.indigo);
+  static const fallback = BrandTheme(appName: 'VMS', seedColor: Colors.indigo);
 }

@@ -36,12 +36,14 @@ class _MobileVMSAppState extends State<MobileVMSApp> {
     await auth.restoreSessionOnResume();
     if (!mounted || auth.status != AuthStatus.authenticated) return;
 
-    // Refresh authenticated data after Android/iOS resumes the process so stale
-    // failed dashboard/menu requests recover without forcing logout/login.
-    await Future.wait<void>([
-      context.read<AppMenuController>().refresh(),
-      context.read<DashboardController>().refresh(force: true),
-    ]);
+    // Refresh lightweight navigation data on resume, but do not aggressively
+    // wipe or reload dashboard cards. DashboardSection keeps existing cards
+    // visible and only refetches when empty or when the user taps refresh.
+    await context.read<AppMenuController>().refresh();
+    final dashboard = context.read<DashboardController>();
+    if (dashboard.cards.isEmpty && !dashboard.loading) {
+      await dashboard.refresh();
+    }
   }
 
   @override
@@ -63,7 +65,7 @@ class _MobileVMSAppState extends State<MobileVMSApp> {
     };
 
     return MaterialApp.router(
-      title: 'Mobile VMS',
+      title: 'VMS',
       debugShowCheckedModeBanner: false,
       themeMode: themeMode,
       darkTheme: ThemeData.dark(useMaterial3: true),
