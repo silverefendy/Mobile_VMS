@@ -33,12 +33,32 @@ class AuthController extends ChangeNotifier {
     }
 
     session = existing;
-    // Restore CSRF token dari session yang tersimpan
+
+    // Restore CSRF token dari session tersimpan
     if (existing.authHeader.isNotEmpty) {
       _apiClient.setCsrfToken(existing.authHeader);
     }
-    // Token auth (jika pakai API key — opsional)
+
     _apiClient.setAuthToken(null);
+
+    // Validasi session ke server.
+    // Jika Android membunuh app dan cookie hilang,
+    // user otomatis kembali ke login dengan bersih.
+    try {
+      final response = await _apiClient.get<Map<String, dynamic>>(
+        '/api/method/frappe.auth.get_logged_user',
+      );
+
+      final user = (response.data?['message'] ?? '').toString().trim();
+
+      if (user.isEmpty || user == 'Guest') {
+        await forceLogout();
+        return;
+      }
+    } catch (_) {
+      await forceLogout();
+      return;
+    }
 
     status = AuthStatus.authenticated;
     notifyListeners();
@@ -49,14 +69,16 @@ class AuthController extends ChangeNotifier {
   Future<bool> login(String username, String password) async {
     error = null;
     notifyListeners();
+
     try {
       final result = await _authRepository.login(username: username, password: password);
+
       session = result;
-      // CSRF token sudah di-set di dalam AuthRepositoryImpl.login()
-      // Token auth tidak diperlukan jika pakai session cookie
       _apiClient.setAuthToken(null);
+
       status = AuthStatus.authenticated;
       notifyListeners();
+
       return true;
     } catch (e) {
       error = e.toString().replaceFirst('AppException: ', '');
