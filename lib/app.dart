@@ -4,6 +4,7 @@ import 'package:provider/provider.dart';
 import 'app/app_router.dart';
 import 'core/auth/auth_controller.dart';
 import 'core/lifecycle/app_lifecycle_coordinator.dart';
+import 'core/server_config/server_config_service.dart';
 import 'core/settings/settings_controller.dart';
 import 'features/dashboard/dashboard_controller.dart';
 import 'features/menu/app_menu_controller.dart';
@@ -55,7 +56,8 @@ class _MobileVMSAppState extends State<MobileVMSApp> {
   @override
   Widget build(BuildContext context) {
     final auth = context.watch<AuthController>();
-    final router = AppRouter(auth).router;
+    final serverConfig = context.watch<ServerConfigService>();
+    final router = AppRouter(auth, serverConfig).router;
     final settings = context.watch<SettingsController>();
 
     final themeMode = switch (settings.themeMode) {
