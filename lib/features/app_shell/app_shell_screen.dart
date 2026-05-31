@@ -26,7 +26,6 @@ class AppShellScreen extends StatelessWidget {
       body: SafeArea(
         child: CustomScrollView(
           slivers: [
-            // App Bar
             SliverAppBar(
               backgroundColor: const Color(0xFF1E3A8A),
               foregroundColor: Colors.white,
@@ -37,14 +36,10 @@ class AppShellScreen extends StatelessWidget {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   const Text('Operations',
-                      style:
-                          TextStyle(fontSize: 18, fontWeight: FontWeight.w600)),
+                      style: TextStyle(fontSize: 18, fontWeight: FontWeight.w600)),
                   if (session != null)
-                    Text(
-                      session.fullName,
-                      style: const TextStyle(
-                          fontSize: 12, color: Colors.white70),
-                    ),
+                    Text(session.fullName,
+                        style: const TextStyle(fontSize: 12, color: Colors.white70)),
                 ],
               ),
               actions: [
@@ -61,24 +56,18 @@ class AppShellScreen extends StatelessWidget {
                 const SizedBox(width: 4),
               ],
             ),
-
-            // Body
             SliverPadding(
               padding: const EdgeInsets.all(16),
               sliver: SliverList(
                 delegate: SliverChildListDelegate([
-                  // Dashboard section
                   const DashboardSection(),
                   const SizedBox(height: 20),
-
-                  // Menu groups
-                  for (final entry in grouped.entries) ...[  
+                  for (final entry in grouped.entries) ...[
                     _SectionHeader(title: entry.key),
                     const SizedBox(height: 10),
                     _MenuGrid(items: entry.value),
                     const SizedBox(height: 20),
                   ],
-
                   const SizedBox(height: 8),
                 ]),
               ),
@@ -98,20 +87,17 @@ class _SectionHeader extends StatelessWidget {
   Widget build(BuildContext context) {
     return Row(
       children: [
-        Text(
-          title,
-          style: const TextStyle(
-            fontSize: 13,
-            fontWeight: FontWeight.w600,
-            color: Color(0xFF1E3A8A),
-            letterSpacing: 0.5,
-          ),
-        ),
+        Text(title,
+            style: const TextStyle(
+                fontSize: 13,
+                fontWeight: FontWeight.w600,
+                color: Color(0xFF1E3A8A),
+                letterSpacing: 0.5)),
         const SizedBox(width: 8),
         Expanded(
           child: Container(
             height: 0.5,
-            color: const Color(0xFF1E3A8A).withOpacity(0.2),
+            color: const Color(0xFF1E3A8A).withValues(alpha: 0.2),
           ),
         ),
       ],
@@ -146,11 +132,16 @@ class _MenuCard extends StatelessWidget {
 
   static const _iconMap = <String, IconData>{
     'qr_code_scanner': Icons.qr_code_scanner_rounded,
+    'scan': Icons.qr_code_scanner_rounded,
     'people': Icons.people_alt_rounded,
     'check_circle': Icons.fact_check_rounded,
     'history': Icons.history_rounded,
     'bar_chart': Icons.bar_chart_rounded,
-    'scan': Icons.qr_code_scanner_rounded,
+    // Employee dashboard
+    'badge': Icons.badge_rounded,
+    'today': Icons.today_rounded,
+    'hourglass': Icons.hourglass_top_rounded,
+    'logout': Icons.door_front_door_outlined,
   };
 
   static const _colorMap = <String, Color>{
@@ -160,6 +151,10 @@ class _MenuCard extends StatelessWidget {
     'check_circle': Color(0xFFEA580C),
     'history': Color(0xFF7C3AED),
     'bar_chart': Color(0xFF0891B2),
+    'badge': Color(0xFF0F766E),
+    'today': Color(0xFF2563EB),
+    'hourglass': Color(0xFFD97706),
+    'logout': Color(0xFF64748B),
   };
 
   static const _bgMap = <String, Color>{
@@ -169,6 +164,10 @@ class _MenuCard extends StatelessWidget {
     'check_circle': Color(0xFFFFF7ED),
     'history': Color(0xFFFAF5FF),
     'bar_chart': Color(0xFFECFEFF),
+    'badge': Color(0xFFF0FDFA),
+    'today': Color(0xFFEFF6FF),
+    'hourglass': Color(0xFFFEF3C7),
+    'logout': Color(0xFFF8FAFC),
   };
 
   @override
@@ -186,10 +185,7 @@ class _MenuCard extends StatelessWidget {
         child: Container(
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(16),
-            border: Border.all(
-              color: const Color(0xFFDDE4F5),
-              width: 0.5,
-            ),
+            border: Border.all(color: const Color(0xFFDDE4F5), width: 0.5),
           ),
           padding: const EdgeInsets.all(14),
           child: Column(
