@@ -4,10 +4,12 @@ import 'package:path_provider/path_provider.dart';
 import 'package:provider/provider.dart';
 
 import 'app.dart';
+import 'config/app_config.dart';
 import 'core/auth/auth_controller.dart';
 import 'core/connectivity/connectivity_service.dart';
 import 'core/network/api_client.dart';
 import 'core/qr/qr_validation_service.dart';
+import 'core/server_config/server_config_service.dart';
 import 'core/settings/settings_controller.dart';
 import 'core/storage/secure_session_storage.dart';
 import 'data/repositories/auth_repository_impl.dart';
@@ -26,6 +28,15 @@ import 'features/visitors/visitors_controller.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
+
+  // Initialize server config first
+  final serverConfig = ServerConfigService();
+  await serverConfig.init();
+  
+  // Set base URL from config
+  if (serverConfig.serverUrl != null) {
+    AppConfig.baseUrl = serverConfig.serverUrl!;
+  }
 
   final supportDir = await getApplicationSupportDirectory();
   final cookieJar = PersistCookieJar(
@@ -47,6 +58,7 @@ Future<void> main() async {
         Provider<AuthRepository>.value(value: authRepository),
         Provider<MenuRepository>.value(value: menuRepository),
         Provider<OperationsRepository>.value(value: operationsRepository),
+        Provider<ServerConfigService>.value(value: serverConfig),
 
         ChangeNotifierProvider<AuthController>(
           create: (context) => AuthController(

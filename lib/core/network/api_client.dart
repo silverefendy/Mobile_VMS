@@ -32,6 +32,10 @@ class ApiClient {
     _dio.interceptors.add(
       InterceptorsWrapper(
         onRequest: (options, handler) {
+          // Use dynamic base URL
+          if (AppConfig.baseUrl.isNotEmpty) {
+            options.baseUrl = AppConfig.baseUrl;
+          }
           // Kirim token auth jika ada (untuk API key/token auth)
           if (_token != null && _token!.isNotEmpty) {
             options.headers['Authorization'] = _token;
