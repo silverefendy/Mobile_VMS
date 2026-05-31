@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
+import '../../app.dart';
 import '../../core/auth/auth_controller.dart';
 
 class SplashScreen extends StatelessWidget {
@@ -9,10 +10,8 @@ class SplashScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final auth = context.watch<AuthController>();
-    final textTheme = Theme.of(context).textTheme;
-
     return Scaffold(
-      backgroundColor: const Color(0xFFF8FAFC),
+      backgroundColor: kBrandTeal,
       body: SafeArea(
         child: Center(
           child: Padding(
@@ -20,81 +19,52 @@ class SplashScreen extends StatelessWidget {
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
-                const _BrandShield(size: 88),
+                Container(
+                  width: 90,
+                  height: 90,
+                  decoration: BoxDecoration(
+                    color: Colors.white.withValues(alpha: 0.15),
+                    borderRadius: BorderRadius.circular(26),
+                  ),
+                  child: const Icon(
+                    Icons.domain_rounded,
+                    size: 52,
+                    color: Colors.white,
+                  ),
+                ),
                 const SizedBox(height: 24),
-                Text(
+                const Text(
                   'VMS',
-                  style: textTheme.headlineMedium?.copyWith(
-                    color: const Color(0xFF0F2A5F),
-                    fontWeight: FontWeight.w800,
-                    letterSpacing: 1.2,
-                  ),
+                  style: TextStyle(
+                      fontSize: 34,
+                      fontWeight: FontWeight.w800,
+                      color: Colors.white,
+                      letterSpacing: 3),
                 ),
-                const SizedBox(height: 8),
-                Text(
+                const SizedBox(height: 6),
+                const Text(
                   'Visitor Management System',
-                  style: textTheme.bodyMedium?.copyWith(
-                    color: const Color(0xFF64748B),
-                    fontWeight: FontWeight.w500,
-                  ),
+                  style: TextStyle(fontSize: 13, color: Colors.white70),
                 ),
-                const SizedBox(height: 32),
+                const SizedBox(height: 40),
                 const SizedBox(
-                  width: 28,
-                  height: 28,
-                  child: CircularProgressIndicator(strokeWidth: 2.6),
+                  width: 26,
+                  height: 26,
+                  child: CircularProgressIndicator(
+                      strokeWidth: 2.4, color: Colors.white),
                 ),
-                const SizedBox(height: 16),
+                const SizedBox(height: 14),
                 Text(
                   auth.restoring
-                      ? 'Memulihkan sesi aman...'
+                      ? 'Memulihkan sesi...'
                       : 'Menyiapkan aplikasi...',
-                  textAlign: TextAlign.center,
-                  style: textTheme.bodySmall?.copyWith(color: const Color(0xFF64748B)),
+                  style: const TextStyle(
+                      fontSize: 13, color: Colors.white70),
                 ),
               ],
             ),
           ),
         ),
-      ),
-    );
-  }
-}
-
-class _BrandShield extends StatelessWidget {
-  const _BrandShield({required this.size});
-
-  final double size;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      width: size,
-      height: size,
-      decoration: BoxDecoration(
-        color: const Color(0xFF0F2A5F),
-        borderRadius: BorderRadius.circular(size * 0.26),
-        boxShadow: const [
-          BoxShadow(
-            color: Color(0x220F2A5F),
-            blurRadius: 22,
-            offset: Offset(0, 12),
-          ),
-        ],
-      ),
-      child: Stack(
-        alignment: Alignment.center,
-        children: [
-          Icon(Icons.shield_rounded, color: Colors.white, size: size * 0.62),
-          Positioned(
-            bottom: size * 0.23,
-            child: Icon(
-              Icons.badge_outlined,
-              color: const Color(0xFF0F2A5F),
-              size: size * 0.27,
-            ),
-          ),
-        ],
       ),
     );
   }
