@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 
 import '../../core/server_config/connection_service.dart';
@@ -17,6 +18,7 @@ class _ServerSetupScreenState extends State<ServerSetupScreen> {
   bool _isTesting = false;
   bool _testSuccess = false;
   String? _testMessage;
+  String? _errorDetails;
 
   @override
   void dispose() {
@@ -31,6 +33,7 @@ class _ServerSetupScreenState extends State<ServerSetupScreen> {
       _isTesting = true;
       _testSuccess = false;
       _testMessage = null;
+      _errorDetails = null;
     });
 
     final serverConfig = context.read<ServerConfigService>();
@@ -46,24 +49,79 @@ class _ServerSetupScreenState extends State<ServerSetupScreen> {
       return;
     }
 
-    final success = await connectionService.testConnection(serverConfig.serverUrl!);
+    // Use detailed connection test for better error reporting
+    final result = await connectionService.testConnectionDetailed(
+      serverConfig.serverUrl!,
+    );
 
-    if (success) {
+    setState(() {
+      _isTesting = false;
+      _testSuccess = result.success;
+      _testMessage = result.message;
+      _errorDetails = result.errorDetails;
+    });
+
+    if (result.success) {
       serverConfig.setStatus(ServerConfigStatus.valid);
-      setState(() {
-        _isTesting = false;
-        _testSuccess = true;
-        _testMessage = 'Connection Success';
-      });
     } else {
-      serverConfig.setStatus(ServerConfigStatus.invalid, 
-        errorMessage: 'Unable to connect to server');
-      setState(() {
-        _isTesting = false;
-        _testSuccess = false;
-        _testMessage = 'Unable to connect';
-      });
+      serverConfig.setStatus(
+        ServerConfigStatus.invalid,
+        errorMessage: result.message,
+      );
     }
+  }
+
+  /// Show detailed error dialog when connection fails
+  void _showErrorDetails() {
+    if (_errorDetails == null) return;
+
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Detail Error'),
+        content: SingleChildScrollView(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(
+                _errorDetails!,
+                style: const TextStyle(
+                  fontFamily: 'monospace',
+                  fontSize: 12,
+                ),
+              ),
+              const SizedBox(height: 16),
+              const Text(
+                'Tips:',
+                style: TextStyle(fontWeight: FontWeight.bold),
+              ),
+              const SizedBox(height: 8),
+              const Text('• Pastikan URL benar dan server aktif'),
+              const Text('• Untuk HTTP lokal, gunakan format http://IP:port'),
+              const Text('• Untuk HTTPS, pastikan sertifikat valid'),
+              const Text('• Visitor Management API harus terinstall'),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton.icon(
+            onPressed: () {
+              Clipboard.setData(ClipboardData(text: _errorDetails!));
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(content: Text('Error details copied')),
+              );
+            },
+            icon: const Icon(Icons.copy, size: 18),
+            label: const Text('Copy'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Close'),
+          ),
+        ],
+      ),
+    );
   }
 
   Future<void> _save() async {
@@ -141,29 +199,63 @@ class _ServerSetupScreenState extends State<ServerSetupScreen> {
                       Container(
                         padding: const EdgeInsets.all(12),
                         decoration: BoxDecoration(
-                          color: _testSuccess 
-                              ? Colors.green.shade50 
+                          color: _testSuccess
+                              ? Colors.green.shade50
                               : Colors.red.shade50,
                           borderRadius: BorderRadius.circular(8),
+                          border: Border.all(
+                            color: _testSuccess
+                                ? Colors.green.shade200
+                                : Colors.red.shade200,
+                          ),
                         ),
-                        child: Row(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            Icon(
-                              _testSuccess ? Icons.check_circle : Icons.error,
-                              color: _testSuccess ? Colors.green : Colors.red,
-                              size: 20,
+                            Row(
+                              children: [
+                                Icon(
+                                  _testSuccess
+                                      ? Icons.check_circle
+                                      : Icons.error,
+                                  color:
+                                      _testSuccess ? Colors.green : Colors.red,
+                                  size: 20,
+                                ),
+                                const SizedBox(width: 8),
+                                Expanded(
+                                  child: Text(
+                                    _testMessage!,
+                                    style: TextStyle(
+                                      color: _testSuccess
+                                          ? Colors.green.shade700
+                                          : Colors.red.shade700,
+                                    ),
+                                  ),
+                                ),
+                                if (!_testSuccess && _errorDetails != null)
+                                  IconButton(
+                                    icon: const Icon(
+                                      Icons.info_outline,
+                                      size: 18,
+                                      color: Color(0xFF64748B),
+                                    ),
+                                    onPressed: _showErrorDetails,
+                                    tooltip: 'Show error details',
+                                  ),
+                              ],
                             ),
-                            const SizedBox(width: 8),
-                            Expanded(
-                              child: Text(
-                                _testMessage!,
+                            if (!_testSuccess) ...[
+                              const SizedBox(height: 8),
+                              Text(
+                                'Tap info icon for details',
                                 style: TextStyle(
-                                  color: _testSuccess 
-                                      ? Colors.green.shade700 
-                                      : Colors.red.shade700,
+                                  fontSize: 11,
+                                  color: Colors.grey.shade600,
+                                  fontStyle: FontStyle.italic,
                                 ),
                               ),
-                            ),
+                            ],
                           ],
                         ),
                       ),
