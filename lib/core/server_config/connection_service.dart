@@ -1,4 +1,3 @@
-import 'dart:async';
 import 'package:dio/dio.dart';
 
 class ConnectionService {
@@ -15,7 +14,8 @@ class ConnectionService {
         '/api/method/visitor_management.mobile.health_check',
       );
       if (response.statusCode == 200 && response.data != null) {
-        return response.data['status'] == 'ok';
+        final data = response.data as Map<String, dynamic>;
+        return data['status'] == 'ok';
       }
     } on DioException {
       // Fallback: try generic ping endpoint
@@ -57,7 +57,7 @@ class ConnectionService {
         '/api/method/visitor_management.mobile.health_check',
       );
       if (response.statusCode == 200 && response.data != null) {
-        return response.data;
+        return response.data as Map<String, dynamic>;
       }
     } catch (_) {}
     
