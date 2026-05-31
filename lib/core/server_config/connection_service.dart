@@ -168,10 +168,18 @@ class ConnectionService {
           ConnectionStage.sslHandshake
         );
       case DioExceptionType.connectionError:
-        if (e.originalError?.message.contains('CERTIFICATE_VERIFY_FAILED') == true) {
+        // Check for common connection error patterns
+        final errorMsg = e.message?.toLowerCase() ?? '';
+        if (errorMsg.contains('certificate') || errorMsg.contains('ssl')) {
           return (
             'SSL Certificate verification failed. Gunakan HTTP untuk development atau perbaiki sertifikat.',
             ConnectionStage.sslHandshake
+          );
+        }
+        if (errorMsg.contains('connection refused') || errorMsg.contains('socket')) {
+          return (
+            'Koneksi ditolak. Pastikan server aktif dan port benar.',
+            ConnectionStage.tcpConnection
           );
         }
         return (
