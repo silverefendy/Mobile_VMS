@@ -24,9 +24,20 @@ class MobileVMSApp extends StatefulWidget {
 class _MobileVMSAppState extends State<MobileVMSApp> {
   AppLifecycleCoordinator? _lifecycle;
 
+  // Router dibuat SEKALI di initState, bukan di build().
+  // Kalau dibuat di build(), setiap rebuild akan membuat router baru
+  // sehingga redirect berjalan ulang dan user terjebak di login screen.
+  late final AppRouter _appRouter;
+
   @override
   void initState() {
     super.initState();
+
+    // Ambil controllers yang sudah ada di provider tree
+    final auth = context.read<AuthController>();
+    final serverConfig = context.read<ServerConfigService>();
+    _appRouter = AppRouter(auth, serverConfig);
+
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted || _lifecycle != null) return;
       _lifecycle = AppLifecycleCoordinator(
@@ -41,10 +52,6 @@ class _MobileVMSAppState extends State<MobileVMSApp> {
     final auth = context.read<AuthController>();
     await auth.restoreSessionOnResume();
     if (!mounted || auth.status != AuthStatus.authenticated) return;
-
-    // Refresh lightweight navigation data on resume, but do not aggressively
-    // wipe or reload dashboard cards. DashboardSection keeps existing cards
-    // visible and only refetches when empty or when the user taps refresh.
     await context.read<AppMenuController>().refresh();
     final dashboard = context.read<DashboardController>();
     if (dashboard.cards.isEmpty && !dashboard.loading) {
@@ -60,9 +67,8 @@ class _MobileVMSAppState extends State<MobileVMSApp> {
 
   @override
   Widget build(BuildContext context) {
-    final auth = context.watch<AuthController>();
-    final serverConfig = context.watch<ServerConfigService>();
-    final router = AppRouter(auth, serverConfig).router;
+    // watch settings saja — bukan auth atau serverConfig
+    // Router sudah listen ke keduanya via refreshListenable di AppRouter
     final settings = context.watch<SettingsController>();
 
     final themeMode = switch (settings.themeMode) {
@@ -95,7 +101,7 @@ class _MobileVMSAppState extends State<MobileVMSApp> {
         colorSchemeSeed: kBrandTeal,
         brightness: Brightness.dark,
       ),
-      routerConfig: router,
+      routerConfig: _appRouter.router,
     );
   }
 }

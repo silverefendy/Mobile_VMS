@@ -29,21 +29,23 @@ import 'features/visitors/visitors_controller.dart';
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
-  // Initialize server config first
+  // 1. Load server config dari SharedPreferences
   final serverConfig = ServerConfigService();
   await serverConfig.init();
-  
-  // Set base URL from config
-  if (serverConfig.serverUrl != null) {
+
+  // 2. Set AppConfig.baseUrl SEBELUM ApiClient dibuat
+  if (serverConfig.serverUrl != null && serverConfig.serverUrl!.isNotEmpty) {
     AppConfig.baseUrl = serverConfig.serverUrl!;
   }
 
+  // 3. Buat ApiClient — baseUrl sudah benar
   final supportDir = await getApplicationSupportDirectory();
   final cookieJar = PersistCookieJar(
     ignoreExpires: false,
     storage: FileStorage('${supportDir.path}/erpnext_cookies'),
   );
   final apiClient = ApiClient(cookieJar: cookieJar);
+
   final sessionStorage = SecureSessionStorage();
   final authRepository =
       AuthRepositoryImpl(apiClient: apiClient, storage: sessionStorage);
@@ -58,7 +60,7 @@ Future<void> main() async {
         Provider<AuthRepository>.value(value: authRepository),
         Provider<MenuRepository>.value(value: menuRepository),
         Provider<OperationsRepository>.value(value: operationsRepository),
-        Provider<ServerConfigService>.value(value: serverConfig),
+        ChangeNotifierProvider<ServerConfigService>.value(value: serverConfig),
 
         ChangeNotifierProvider<AuthController>(
           create: (context) => AuthController(
@@ -100,13 +102,10 @@ Future<void> main() async {
           create: (context) =>
               DashboardController(context.read<MenuRepository>()),
         ),
-
-        // Employee dashboard — role-based (employee lihat miliknya, manager lihat semua)
         ChangeNotifierProvider<EmployeeDashboardController>(
           create: (context) =>
               EmployeeDashboardController(context.read<ApiClient>()),
         ),
-
         ChangeNotifierProxyProvider<AuthController, AppMenuController>(
           create: (context) =>
               AppMenuController(context.read<MenuRepository>()),

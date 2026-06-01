@@ -14,33 +14,31 @@ class ApiClient {
 
     _dio = Dio(
       BaseOptions(
-        baseUrl: AppConfig.baseUrl,
+        // baseUrl awalnya kosong — di-set via interceptor onRequest
+        // agar selalu pakai AppConfig.baseUrl yang terbaru
+        baseUrl: AppConfig.baseUrl.isNotEmpty ? AppConfig.baseUrl : 'http://localhost',
         connectTimeout: const Duration(seconds: 15),
         receiveTimeout: const Duration(seconds: 20),
         sendTimeout: const Duration(seconds: 20),
-        // Default content-type untuk request biasa (bukan login)
-        // Login menggunakan FormData yang override content-type otomatis
         contentType: Headers.jsonContentType,
       ),
     );
 
-    // Cookie manager — wajib untuk session Frappe. In production Android builds
-    // this is backed by PersistCookieJar from main.dart so sid cookies survive
-    // process death/removal from recents and are restored before auth validation.
     _dio.interceptors.add(CookieManager(_cookieJar));
 
     _dio.interceptors.add(
       InterceptorsWrapper(
         onRequest: (options, handler) {
-          // Use dynamic base URL
-          if (AppConfig.baseUrl.isNotEmpty) {
-            options.baseUrl = AppConfig.baseUrl;
+          // SELALU override baseUrl dari AppConfig setiap request
+          // Ini memastikan perubahan server URL langsung berlaku
+          final currentBase = AppConfig.baseUrl;
+          if (currentBase.isNotEmpty) {
+            options.baseUrl = currentBase;
           }
-          // Kirim token auth jika ada (untuk API key/token auth)
+
           if (_token != null && _token!.isNotEmpty) {
             options.headers['Authorization'] = _token;
           }
-          // Kirim CSRF token untuk semua POST request ke Frappe
           if (options.method == 'POST' &&
               _csrfToken != null &&
               _csrfToken!.isNotEmpty) {
@@ -48,7 +46,7 @@ class ApiClient {
           }
           if (AppConfig.enableApiLog) {
             AppLogger.info('api_request',
-                context: {'method': options.method, 'path': options.path});
+                context: {'method': options.method, 'path': options.path, 'base': options.baseUrl});
           }
           handler.next(options);
         },
@@ -91,7 +89,15 @@ class ApiClient {
 
   void setCsrfToken(String? token) => _csrfToken = token;
 
-  /// Clear semua cookies (dipakai saat logout/session invalid)
+  /// Update base URL secara eksplisit (dipanggil setelah server dikonfigurasi)
+  void updateBaseUrl(String url) {
+    AppConfig.baseUrl = url;
+    _dio.options.baseUrl = url;
+    if (AppConfig.enableApiLog) {
+      AppLogger.info('api_base_url_updated', context: {'url': url});
+    }
+  }
+
   Future<void> clearCookies() async {
     await _cookieJar.deleteAll();
   }
