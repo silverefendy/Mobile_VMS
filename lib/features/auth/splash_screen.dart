@@ -1,8 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
-
-import '../../app.dart';
 import '../../core/auth/auth_controller.dart';
+import '../../core/init/app_initializer.dart';
+import '../../config/theme.dart';
 
 class SplashScreen extends StatelessWidget {
   const SplashScreen({super.key});
@@ -10,6 +10,46 @@ class SplashScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final auth = context.watch<AuthController>();
+    final initializer = context.watch<AppInitializer>();
+
+    // Show error state if initialization failed
+    if (initializer.state == InitState.error) {
+      return Scaffold(
+        backgroundColor: kBrandTeal,
+        body: Center(
+          child: Padding(
+            padding: const EdgeInsets.all(32),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Icon(Icons.error_outline, size: 64, color: Colors.white),
+                const SizedBox(height: 16),
+                const Text(
+                  'Initialization Error',
+                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.white),
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  initializer.error ?? 'Unknown error',
+                  style: const TextStyle(fontSize: 13, color: Colors.white70),
+                  textAlign: TextAlign.center,
+                ),
+                const SizedBox(height: 24),
+                ElevatedButton(
+                  onPressed: () {
+                    initializer.reset();
+                    initializer.initialize();
+                  },
+                  child: const Text('Retry'),
+                ),
+              ],
+            ),
+          ),
+        ),
+      );
+    }
+
+    // Normal loading state
     return Scaffold(
       backgroundColor: kBrandTeal,
       body: SafeArea(
@@ -19,32 +59,16 @@ class SplashScreen extends StatelessWidget {
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
-                Container(
-                  width: 90,
-                  height: 90,
-                  decoration: BoxDecoration(
-                    color: Colors.white.withValues(alpha: 0.15),
-                    borderRadius: BorderRadius.circular(26),
-                  ),
-                  child: const Icon(
-                    Icons.domain_rounded,
-                    size: 52,
-                    color: Colors.white,
-                  ),
-                ),
+                // Logo placeholder
+                const Icon(Icons.security, size: 80, color: Colors.white),
                 const SizedBox(height: 24),
                 const Text(
-                  'VMS',
+                  'Visitor Management',
                   style: TextStyle(
-                      fontSize: 34,
-                      fontWeight: FontWeight.w800,
-                      color: Colors.white,
-                      letterSpacing: 3),
-                ),
-                const SizedBox(height: 6),
-                const Text(
-                  'Visitor Management System',
-                  style: TextStyle(fontSize: 13, color: Colors.white70),
+                    fontSize: 24,
+                    fontWeight: FontWeight.bold,
+                    color: Colors.white,
+                  ),
                 ),
                 const SizedBox(height: 40),
                 const SizedBox(
@@ -55,11 +79,13 @@ class SplashScreen extends StatelessWidget {
                 ),
                 const SizedBox(height: 14),
                 Text(
-                  auth.restoring
-                      ? 'Memulihkan sesi...'
-                      : 'Menyiapkan aplikasi...',
-                  style: const TextStyle(
-                      fontSize: 13, color: Colors.white70),
+                  // ⭐ Updated status messages
+                  initializer.isInitializing
+                      ? 'Initializing...'
+                      : auth.restoring
+                          ? 'Memulihkan sesi...'
+                          : 'Menyiapkan aplikasi...',
+                  style: const TextStyle(fontSize: 13, color: Colors.white70),
                 ),
               ],
             ),
