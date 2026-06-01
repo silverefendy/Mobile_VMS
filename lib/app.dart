@@ -9,6 +9,11 @@ import 'core/settings/settings_controller.dart';
 import 'features/dashboard/dashboard_controller.dart';
 import 'features/menu/app_menu_controller.dart';
 
+/// Brand teal color — dipakai di seluruh app
+const kBrandTeal = Color(0xFF0D7490);
+const kBrandTealDark = Color(0xFF0A5F75);
+const kBrandTealLight = Color(0xFFE0F2F7);
+
 class MobileVMSApp extends StatefulWidget {
   const MobileVMSApp({super.key});
 
@@ -70,8 +75,26 @@ class _MobileVMSAppState extends State<MobileVMSApp> {
       title: 'VMS',
       debugShowCheckedModeBanner: false,
       themeMode: themeMode,
-      darkTheme: ThemeData.dark(useMaterial3: true),
-      theme: ThemeData(useMaterial3: true, colorSchemeSeed: Colors.indigo),
+      theme: ThemeData(
+        useMaterial3: true,
+        colorSchemeSeed: kBrandTeal,
+        appBarTheme: const AppBarTheme(
+          backgroundColor: kBrandTeal,
+          foregroundColor: Colors.white,
+          elevation: 0,
+        ),
+        filledButtonTheme: FilledButtonThemeData(
+          style: FilledButton.styleFrom(
+            backgroundColor: kBrandTeal,
+            foregroundColor: Colors.white,
+          ),
+        ),
+      ),
+      darkTheme: ThemeData(
+        useMaterial3: true,
+        colorSchemeSeed: kBrandTeal,
+        brightness: Brightness.dark,
+      ),
       routerConfig: router,
     );
   }
