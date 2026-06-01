@@ -135,7 +135,9 @@ class _ServerSetupScreenState extends State<ServerSetupScreen> {
 
     await serverConfig.saveServerUrl();
     if (mounted) {
-      Navigator.of(context).pushReplacementNamed('/splash');
+      // Navigate to login - router will handle the redirect
+      // based on serverConfig.isConfigured and auth status
+      Navigator.of(context).pushReplacementNamed('/login');
     }
   }
 

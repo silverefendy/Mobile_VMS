@@ -1,6 +1,8 @@
 import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import '../../app.dart';
+
 enum ServerConfigStatus { unconfigured, configured, validating, valid, invalid }
 
 class ServerConfigService extends ChangeNotifier {
@@ -23,6 +25,7 @@ class ServerConfigService extends ChangeNotifier {
     _status = _serverUrl != null && _serverUrl!.isNotEmpty
         ? ServerConfigStatus.configured
         : ServerConfigStatus.unconfigured;
+    _debugLog('init', 'serverUrl=$_serverUrl, status=$_status, isConfigured=$isConfigured');
     notifyListeners();
   }
 
@@ -30,6 +33,7 @@ class ServerConfigService extends ChangeNotifier {
     final trimmed = url.trim();
     if (trimmed.isEmpty) {
       _errorMessage = 'Server URL tidak boleh kosong';
+      _debugLog('setServerUrl', 'EMPTY URL - error=$_errorMessage');
       notifyListeners();
       return false;
     }
@@ -47,6 +51,7 @@ class ServerConfigService extends ChangeNotifier {
     _serverUrl = formattedUrl;
     _status = ServerConfigStatus.validating;
     _errorMessage = null;
+    _debugLog('setServerUrl', 'url=$_serverUrl, status=$_status, isConfigured=$isConfigured');
     notifyListeners();
 
     return true;
@@ -55,15 +60,21 @@ class ServerConfigService extends ChangeNotifier {
   void setStatus(ServerConfigStatus status, {String? errorMessage}) {
     _status = status;
     _errorMessage = errorMessage;
+    _debugLog('setStatus', 'newStatus=$status, errorMessage=$errorMessage, isConfigured=$isConfigured');
     notifyListeners();
   }
 
   Future<void> saveServerUrl() async {
-    if (_serverUrl == null) return;
+    _debugLog('saveServerUrl', 'BEFORE SAVE - serverUrl=$_serverUrl, status=$_status, isConfigured=$isConfigured');
+    if (_serverUrl == null) {
+      _debugLog('saveServerUrl', 'NULL serverUrl - returning early');
+      return;
+    }
     
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString(_keyServerUrl, _serverUrl!);
     _status = ServerConfigStatus.configured;
+    _debugLog('saveServerUrl', 'AFTER SAVE - serverUrl=$_serverUrl, status=$_status, isConfigured=$isConfigured');
     notifyListeners();
   }
 
@@ -73,6 +84,11 @@ class ServerConfigService extends ChangeNotifier {
     _serverUrl = null;
     _status = ServerConfigStatus.unconfigured;
     _errorMessage = null;
+    _debugLog('clearConfiguration', 'Cleared - status=$_status, isConfigured=$isConfigured');
     notifyListeners();
+  }
+
+  void _debugLog(String method, String message) {
+    debugPrint('[ServerConfigService.$method] $message');
   }
 }

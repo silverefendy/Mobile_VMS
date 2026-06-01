@@ -1,4 +1,4 @@
-import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart';
 import 'package:go_router/go_router.dart';
 
 import '../core/auth/auth_controller.dart';
@@ -27,15 +27,45 @@ class AppRouter {
       final isAuth = _authController.status == AuthStatus.authenticated;
       final isBooting = _authController.status == AuthStatus.booting;
       final needsSetup = !_serverConfig.isConfigured;
+      final currentRoute = state.matchedLocation;
 
-      if (isBooting) return '/splash';
-      if (needsSetup && state.matchedLocation != '/setup') return '/setup';
+      _debugLog('REDIRECT CHECK', 
+        'route=$currentRoute, isAuth=$isAuth, isBooting=$isBooting, '
+        'needsSetup=$needsSetup, serverUrl=${_serverConfig.serverUrl}, '
+        'serverStatus=${_serverConfig.status}');
+
+      if (isBooting) {
+        _debugLog('REDIRECT', '-> /splash (booting)');
+        return '/splash';
+      }
+      
+      // NEW: If server is configured but user not authenticated, go to login
+      // This handles the case where user just configured server but hasn't logged in
+      if (_serverConfig.isConfigured && !isAuth && currentRoute != '/login') {
+        _debugLog('REDIRECT', '-> /login (server configured, not authenticated, from $currentRoute)');
+        return '/login';
+      }
+      
+      if (needsSetup && currentRoute != '/setup') {
+        _debugLog('REDIRECT', '-> /setup (needs setup, no server configured)');
+        return '/setup';
+      }
       if (isAuth &&
-          (state.matchedLocation == '/login' ||
-              state.matchedLocation == '/splash' ||
-              state.matchedLocation == '/setup')) return '/app';
-      if (!isAuth && state.matchedLocation == '/setup') return '/setup';
-      if (!isAuth && state.matchedLocation != '/login') return '/login';
+          (currentRoute == '/login' ||
+              currentRoute == '/splash' ||
+              currentRoute == '/setup')) {
+        _debugLog('REDIRECT', '-> /app (authenticated, redirecting from $currentRoute)');
+        return '/app';
+      }
+      if (!isAuth && currentRoute == '/setup') {
+        _debugLog('REDIRECT', '-> /setup (not authenticated, staying)');
+        return '/setup';
+      }
+      if (!isAuth && currentRoute != '/login') {
+        _debugLog('REDIRECT', '-> /login (not authenticated, not on login page)');
+        return '/login';
+      }
+      _debugLog('REDIRECT', '-> null (no redirect needed)');
       return null;
     },
     routes: [
@@ -55,4 +85,8 @@ class AppRouter {
       ),
     ],
   );
+
+  void _debugLog(String method, String message) {
+    debugPrint('[AppRouter.$method] $message');
+  }
 }
