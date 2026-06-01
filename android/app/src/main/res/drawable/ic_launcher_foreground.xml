@@ -21,14 +21,14 @@
         android:pathData="M28,36 Q28,30 34,30 L74,30 Q80,30 80,36 L80,40 L28,40 Z" />
 
     <!-- Windows row 1 -->
-    <rect android:fillColor="#0D7490" android:x="36" android:y="44" android:width="8" android:height="7" android:rx="1" />
-    <rect android:fillColor="#0D7490" android:x="50" android:y="44" android:width="8" android:height="7" android:rx="1" />
-    <rect android:fillColor="#0D7490" android:x="64" android:y="44" android:width="8" android:height="7" android:rx="1" />
+    <path
+        android:fillColor="#0D7490"
+        android:pathData="M36,44 h8 v7 h-8 z M50,44 h8 v7 h-8 z M64,44 h8 v7 h-8 z" />
 
     <!-- Windows row 2 -->
-    <rect android:fillColor="#0D7490" android:x="36" android:y="56" android:width="8" android:height="7" android:rx="1" />
-    <rect android:fillColor="#0D7490" android:x="50" android:y="56" android:width="8" android:height="7" android:rx="1" />
-    <rect android:fillColor="#0D7490" android:x="64" android:y="56" android:width="8" android:height="7" android:rx="1" />
+    <path
+        android:fillColor="#0D7490"
+        android:pathData="M36,56 h8 v7 h-8 z M50,56 h8 v7 h-8 z M64,56 h8 v7 h-8 z" />
 
     <!-- Main door -->
     <path
