@@ -30,6 +30,26 @@ class _LoginScreenState extends State<LoginScreen> {
   void initState() {
     super.initState();
     _loadSavedUsername();
+    
+    // ✅ PROACTIVE CHECK: Jika baseUrl kosong saat login terbuka, redirect ke setup
+    // This prevents users from seeing login screen with invalid/unconfigured server
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted && AppConfig.baseUrl.isEmpty) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('⚠️ Server URL belum terkonfigurasi'),
+            backgroundColor: Colors.orange,
+            duration: Duration(seconds: 3),
+          ),
+        );
+        // Redirect back to server setup
+        Future.delayed(const Duration(seconds: 2), () {
+          if (mounted) {
+            Navigator.of(context).pushReplacementNamed('/setup');
+          }
+        });
+      }
+    });
   }
 
   @override
@@ -80,7 +100,7 @@ class _LoginScreenState extends State<LoginScreen> {
       // Redirect back to server setup if baseUrl is empty
       Future.delayed(const Duration(seconds: 2), () {
         if (mounted) {
-          Navigator.of(context).pushReplacementNamed('/server-setup');
+          Navigator.of(context).pushReplacementNamed('/setup');
         }
       });
       return;
