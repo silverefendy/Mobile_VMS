@@ -32,24 +32,27 @@ class AppRouter {
       _debugLog('REDIRECT CHECK', 
         'route=$currentRoute, isAuth=$isAuth, isBooting=$isBooting, '
         'needsSetup=$needsSetup, serverUrl=${_serverConfig.serverUrl}, '
-        'serverStatus=${_serverConfig.status}');
+        'serverStatus=${_serverConfig.status}, isReadyForLogin=${_serverConfig.isReadyForLogin}');
 
       if (isBooting) {
         _debugLog('REDIRECT', '-> /splash (booting)');
         return '/splash';
       }
       
-      // NEW: If server is configured but user not authenticated, go to login
-      // This handles the case where user just configured server but hasn't logged in
-      if (_serverConfig.isConfigured && !isAuth && currentRoute != '/login') {
-        _debugLog('REDIRECT', '-> /login (server configured, not authenticated, from $currentRoute)');
+      // STRICT: Only redirect to login if server is READY (validated + connection test passed)
+      // This prevents users from reaching login with invalid/untested server URLs
+      if (_serverConfig.isReadyForLogin && !isAuth && currentRoute != '/login') {
+        _debugLog('REDIRECT', '-> /login (server READY, not authenticated, from $currentRoute)');
         return '/login';
       }
       
-      if (needsSetup && currentRoute != '/setup') {
-        _debugLog('REDIRECT', '-> /setup (needs setup, no server configured)');
+      // Redirect to setup if: needs setup OR status is invalid (connection test failed)
+      // This forces users back to setup screen if their server config is invalid
+      if ((needsSetup || _serverConfig.status == ServerConfigStatus.invalid) && currentRoute != '/setup') {
+        _debugLog('REDIRECT', '-> /setup (needs setup OR invalid status, from $currentRoute)');
         return '/setup';
       }
+      
       if (isAuth &&
           (currentRoute == '/login' ||
               currentRoute == '/splash' ||
