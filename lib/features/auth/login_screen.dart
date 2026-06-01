@@ -6,6 +6,7 @@ import '../../app.dart';
 import '../../config/app_config.dart';
 import '../../core/auth/auth_controller.dart';
 import '../widgets/connection_indicator.dart';
+import '../../theme/colors.dart';
 
 const _kLastUsername = 'vms_last_username';
 

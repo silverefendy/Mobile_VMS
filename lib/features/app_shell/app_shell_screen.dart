@@ -9,6 +9,7 @@ import '../dashboard/dashboard_controller.dart';
 import '../employee/employee_dashboard_controller.dart';
 import '../menu/app_menu_controller.dart';
 import '../widgets/connection_indicator.dart';
+import '../../theme/colors.dart';
 
 class AppShellScreen extends StatefulWidget {
   const AppShellScreen({super.key});
