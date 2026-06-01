@@ -251,7 +251,7 @@ class _LoginScreenState extends State<LoginScreen> {
               ),
             ),
             // ✅ Connection indicator di pojok kanan atas
-            const Positioned(
+            Positioned(
               top: 8,
               right: 8,
               child: ConnectionIndicator(showText: true),

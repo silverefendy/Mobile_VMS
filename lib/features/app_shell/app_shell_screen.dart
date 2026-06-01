@@ -77,7 +77,7 @@ class _AppShellScreenState extends State<AppShellScreen>
               ),
               actions: [
                 // ✅ Connection indicator di pojok kanan atas AppBar
-                const ConnectionIndicator(position: ConnectionPosition.topRight),
+                ConnectionIndicator(position: ConnectionPosition.topRight),
                 const SizedBox(width: 4),
                 IconButton(
                   onPressed: () => context.push('/settings'),
