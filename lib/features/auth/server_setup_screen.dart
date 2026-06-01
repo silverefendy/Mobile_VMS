@@ -70,6 +70,12 @@ class _ServerSetupScreenState extends State<ServerSetupScreen> {
     });
 
     if (result.success) {
+      // ✅ PENTING: Set AppConfig.baseUrl saat test berhasil
+      // agar indikator koneksi dan login bisa langsung menggunakan URL yang benar
+      AppConfig.baseUrl = serverConfig.serverUrl!;
+      if (mounted) {
+        context.read<ApiClient>().updateBaseUrl(serverConfig.serverUrl!);
+      }
       serverConfig.setStatus(ServerConfigStatus.valid);
     } else {
       serverConfig.setStatus(
@@ -97,10 +103,10 @@ class _ServerSetupScreenState extends State<ServerSetupScreen> {
               const Text('Tips:',
                   style: TextStyle(fontWeight: FontWeight.bold)),
               const SizedBox(height: 8),
-              const Text('\u2022 Pastikan URL benar dan server aktif'),
-              const Text('\u2022 Untuk HTTP lokal, gunakan format http://IP:port'),
-              const Text('\u2022 Untuk HTTPS, pastikan sertifikat valid'),
-              const Text('\u2022 Visitor Management API harus terinstall'),
+              const Text('• Pastikan URL benar dan server aktif'),
+              const Text('• Untuk HTTP lokal, gunakan format http://IP:port'),
+              const Text('• Untuk HTTPS, pastikan sertifikat valid'),
+              const Text('• Visitor Management API harus terinstall'),
             ],
           ),
         ),
@@ -124,9 +130,14 @@ class _ServerSetupScreenState extends State<ServerSetupScreen> {
 
   Future<void> _save() async {
     final serverConfig = context.read<ServerConfigService>();
+    
+    // Validasi: harus sudah test dan berhasil
     if (serverConfig.status != ServerConfigStatus.valid) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Test koneksi dulu sebelum menyimpan')),
+        const SnackBar(
+          content: Text('✅ Test koneksi harus berhasil terlebih dahulu'),
+          backgroundColor: Colors.orange,
+        ),
       );
       return;
     }
@@ -141,11 +152,17 @@ class _ServerSetupScreenState extends State<ServerSetupScreen> {
 
     // Baru simpan — ini trigger notifyListeners() dan router redirect
     await serverConfig.saveServerUrl();
+    
+    // Redirect ke login
+    if (mounted) {
+      Navigator.of(context).pushReplacementNamed('/login');
+    }
   }
 
   @override
   Widget build(BuildContext context) {
     final serverConfig = context.watch<ServerConfigService>();
+    // ✅ Tombol Save hanya enable jika status valid (sudah test & sukses)
     final canSave = serverConfig.status == ServerConfigStatus.valid;
 
     return Scaffold(
@@ -298,7 +315,7 @@ class _ServerSetupScreenState extends State<ServerSetupScreen> {
 
                     const SizedBox(height: 24),
 
-                    // Test button
+                    // Test button - HANYA untuk test, tidak auto-proceed
                     OutlinedButton(
                       onPressed: _isTesting ? null : _testConnection,
                       style: OutlinedButton.styleFrom(
@@ -319,11 +336,11 @@ class _ServerSetupScreenState extends State<ServerSetupScreen> {
                     ),
                     const SizedBox(height: 12),
 
-                    // Save button
+                    // Save button - HANYA enable setelah test berhasil
                     FilledButton(
                       onPressed: canSave ? _save : null,
                       style: FilledButton.styleFrom(
-                        backgroundColor: kBrandTeal,
+                        backgroundColor: canSave ? kBrandTeal : Colors.grey,
                         padding: const EdgeInsets.symmetric(vertical: 14),
                         shape: RoundedRectangleBorder(
                             borderRadius: BorderRadius.circular(12)),
@@ -332,6 +349,21 @@ class _ServerSetupScreenState extends State<ServerSetupScreen> {
                           style: TextStyle(
                               fontSize: 15, fontWeight: FontWeight.w700)),
                     ),
+                    
+                    // Helper text
+                    if (!canSave && _testSuccess == false)
+                      Padding(
+                        padding: const EdgeInsets.only(top: 8),
+                        child: Text(
+                          '💡 Klik "Test Koneksi" dulu untuk memvalidasi URL',
+                          style: TextStyle(
+                            fontSize: 11,
+                            color: Colors.grey.shade600,
+                            fontStyle: FontStyle.italic,
+                          ),
+                          textAlign: TextAlign.center,
+                        ),
+                      ),
                   ],
                 ),
               ),
