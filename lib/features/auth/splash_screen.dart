@@ -3,6 +3,7 @@ import 'package:provider/provider.dart';
 import '../../core/auth/auth_controller.dart';
 import '../../core/init/app_initializer.dart';
 import '../../config/theme.dart';
+import '../../theme/colors.dart';
 
 class SplashScreen extends StatelessWidget {
   const SplashScreen({super.key});

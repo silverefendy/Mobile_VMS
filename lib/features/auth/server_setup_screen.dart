@@ -7,6 +7,7 @@ import '../../config/app_config.dart';
 import '../../core/network/api_client.dart';
 import '../../core/server_config/connection_service.dart';
 import '../../core/server_config/server_config_service.dart';
+import '../../theme/colors.dart';
 
 class ServerSetupScreen extends StatefulWidget {
   const ServerSetupScreen({super.key});

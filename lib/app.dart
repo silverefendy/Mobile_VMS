@@ -6,6 +6,7 @@ import 'core/network/api_client.dart';
 import 'core/init/app_initializer.dart';
 import 'app/app_router.dart';
 import 'theme/app_theme.dart';
+import 'theme/colors.dart';
 
 class MobileVMSApp extends StatelessWidget {
   const MobileVMSApp({
