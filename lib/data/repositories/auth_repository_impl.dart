@@ -1,5 +1,3 @@
-import 'package:dio/dio.dart';
-
 import '../../core/network/api_client.dart';
 import '../../core/storage/secure_session_storage.dart';
 import '../../domain/models/auth_session.dart';
@@ -16,25 +14,23 @@ class AuthRepositoryImpl implements AuthRepository {
 
   @override
   Future<AuthSession> login({required String username, required String password}) async {
-    // Frappe login HARUS pakai form-encoded, bukan JSON
-    final formData = FormData.fromMap({
-      'usr': username,
-      'pwd': password,
-    });
-
-    Response<Map<String, dynamic>> loginResp;
+    // Frappe login WAJIB pakai application/x-www-form-urlencoded
+    // Menggunakan postForm() bukan post() agar content-type benar
+    late final dynamic loginData;
     try {
-      loginResp = await _apiClient.post<Map<String, dynamic>>(
+      final loginResp = await _apiClient.postForm<Map<String, dynamic>>(
         '/api/method/login',
-        data: formData,
+        fields: {'usr': username, 'pwd': password},
       );
+      loginData = loginResp.data;
     } catch (e) {
-      // Frappe mengembalikan 401 saat password salah
-      throw AppException('Username atau password salah. Pastikan akun aktif di ERPNext.');
+      // Frappe mengembalikan 401 saat credentials salah
+      throw AppException(
+        'Username atau password salah. Pastikan akun aktif di ERPNext.',
+      );
     }
 
-    // Verifikasi login berhasil — Frappe mengembalikan home_page saat sukses
-    final loginData = loginResp.data;
+    // Frappe mengembalikan home_page saat login sukses
     if (loginData == null || loginData['home_page'] == null) {
       throw AppException('Login gagal: respons server tidak valid.');
     }
@@ -48,7 +44,7 @@ class AuthRepositoryImpl implements AuthRepository {
       throw AppException('Login gagal: sesi tidak valid. Coba lagi.');
     }
 
-    // Ambil CSRF token — diperlukan untuk semua POST request berikutnya
+    // Ambil CSRF token untuk semua POST request berikutnya
     String csrfToken = '';
     try {
       final csrfResp = await _apiClient.get<Map<String, dynamic>>(
@@ -56,7 +52,6 @@ class AuthRepositoryImpl implements AuthRepository {
       );
       csrfToken = csrfResp.data?['message']?.toString() ?? '';
     } catch (_) {
-      // Fallback: coba ambil dari endpoint Frappe bawaan
       try {
         final csrfResp = await _apiClient.get<Map<String, dynamic>>(
           '/api/method/frappe.utils.csrf_token.get_token',
@@ -64,27 +59,17 @@ class AuthRepositoryImpl implements AuthRepository {
         csrfToken = csrfResp.data?['message']?.toString() ?? '';
       } catch (_) {}
     }
-
-    // Set CSRF token ke ApiClient agar dipakai di semua request berikutnya
     _apiClient.setCsrfToken(csrfToken);
 
-    // Ambil nama lengkap user
+    // Ambil nama lengkap dan roles user
     String fullName = userId;
+    List<String> roles = ['Employee'];
     try {
       final profileResp = await _apiClient.get<Map<String, dynamic>>(
         '/api/resource/User/$userId',
       );
       final userData = profileResp.data?['data'] as Map<String, dynamic>?;
       fullName = userData?['full_name']?.toString() ?? userId;
-    } catch (_) {}
-
-    // Ambil roles user dari Frappe
-    List<String> roles = ['Employee'];
-    try {
-      final rolesResp = await _apiClient.get<Map<String, dynamic>>(
-        '/api/resource/User/$userId',
-      );
-      final userData = rolesResp.data?['data'] as Map<String, dynamic>?;
       final rolesList = userData?['roles'] as List<dynamic>?;
       if (rolesList != null && rolesList.isNotEmpty) {
         roles = rolesList
@@ -97,7 +82,7 @@ class AuthRepositoryImpl implements AuthRepository {
     final session = AuthSession(
       userId: userId,
       fullName: fullName,
-      authHeader: csrfToken, // simpan CSRF token untuk di-restore saat restart app
+      authHeader: csrfToken,
       roles: roles,
     );
     await _storage.saveSession(session);
@@ -114,8 +99,6 @@ class AuthRepositoryImpl implements AuthRepository {
 
   @override
   Future<void> clearLocalAuthState() async {
-    // Hapus cookie sesi Frappe dan state auth lokal agar app tidak pernah
-    // tersangkut dalam kondisi dashboard authenticated palsu.
     await _apiClient.clearCookies();
     await _storage.clear();
   }

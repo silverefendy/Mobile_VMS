@@ -14,13 +14,13 @@ class ApiClient {
 
     _dio = Dio(
       BaseOptions(
-        // baseUrl awalnya kosong — di-set via interceptor onRequest
-        // agar selalu pakai AppConfig.baseUrl yang terbaru
         baseUrl: AppConfig.baseUrl.isNotEmpty ? AppConfig.baseUrl : 'http://localhost',
         connectTimeout: const Duration(seconds: 15),
         receiveTimeout: const Duration(seconds: 20),
         sendTimeout: const Duration(seconds: 20),
-        contentType: Headers.jsonContentType,
+        // PENTING: Jangan set contentType di sini secara global.
+        // Login Frappe butuh form-encoded, endpoint lain butuh JSON.
+        // Content-type diatur per-request.
       ),
     );
 
@@ -29,8 +29,6 @@ class ApiClient {
     _dio.interceptors.add(
       InterceptorsWrapper(
         onRequest: (options, handler) {
-          // SELALU override baseUrl dari AppConfig setiap request
-          // Ini memastikan perubahan server URL langsung berlaku
           final currentBase = AppConfig.baseUrl;
           if (currentBase.isNotEmpty) {
             options.baseUrl = currentBase;
@@ -39,6 +37,7 @@ class ApiClient {
           if (_token != null && _token!.isNotEmpty) {
             options.headers['Authorization'] = _token;
           }
+          // Set CSRF token untuk semua POST — kecuali login (tidak ada token saat itu)
           if (options.method == 'POST' &&
               _csrfToken != null &&
               _csrfToken!.isNotEmpty) {
@@ -89,7 +88,6 @@ class ApiClient {
 
   void setCsrfToken(String? token) => _csrfToken = token;
 
-  /// Update base URL secara eksplisit (dipanggil setelah server dikonfigurasi)
   void updateBaseUrl(String url) {
     AppConfig.baseUrl = url;
     _dio.options.baseUrl = url;
@@ -108,6 +106,18 @@ class ApiClient {
   Future<Response<T>> post<T>(String path,
       {dynamic data, Map<String, dynamic>? queryParameters}) =>
       _execute(() => _dio.post<T>(path, data: data, queryParameters: queryParameters));
+
+  /// POST khusus login dengan content-type form-encoded
+  /// Frappe WAJIB menerima form-encoded untuk /api/method/login
+  Future<Response<T>> postForm<T>(String path,
+      {required Map<String, String> fields}) =>
+      _execute(() => _dio.post<T>(
+            path,
+            data: fields.entries.map((e) => '${e.key}=${Uri.encodeComponent(e.value)}').join('&'),
+            options: Options(
+              contentType: 'application/x-www-form-urlencoded',
+            ),
+          ));
 
   Future<Response<T>> _execute<T>(Future<Response<T>> Function() request) async {
     try {
