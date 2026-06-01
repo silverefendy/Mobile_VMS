@@ -8,6 +8,7 @@ import '../../domain/models/menu_item.dart';
 import '../dashboard/dashboard_controller.dart';
 import '../employee/employee_dashboard_controller.dart';
 import '../menu/app_menu_controller.dart';
+import '../widgets/connection_indicator.dart';
 
 class AppShellScreen extends StatefulWidget {
   const AppShellScreen({super.key});
@@ -75,6 +76,9 @@ class _AppShellScreenState extends State<AppShellScreen>
                 ],
               ),
               actions: [
+                // ✅ Connection indicator di pojok kanan atas AppBar
+                const ConnectionIndicator(position: ConnectionPosition.topRight),
+                const SizedBox(width: 4),
                 IconButton(
                   onPressed: () => context.push('/settings'),
                   icon: const Icon(Icons.settings_outlined),
