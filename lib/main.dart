@@ -2,112 +2,124 @@ import 'package:cookie_jar/cookie_jar.dart';
 import 'package:flutter/material.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:provider/provider.dart';
+
 import 'app.dart';
 import 'config/app_config.dart';
 import 'core/auth/auth_controller.dart';
-import 'core/auth/auth_repository.dart';
-import 'core/init/app_initializer.dart';
+import 'core/connectivity/connectivity_service.dart';
 import 'core/network/api_client.dart';
+import 'core/qr/qr_validation_service.dart';
 import 'core/server_config/server_config_service.dart';
 import 'core/settings/settings_controller.dart';
 import 'core/storage/secure_session_storage.dart';
+import 'data/repositories/auth_repository_impl.dart';
 import 'data/repositories/menu_repository_impl.dart';
 import 'data/repositories/operations_repository_impl.dart';
 import 'domain/repositories/auth_repository.dart';
+import 'domain/repositories/menu_repository.dart';
+import 'domain/repositories/operations_repository.dart';
 import 'features/activity/activity_controller.dart';
 import 'features/approvals/approvals_controller.dart';
 import 'features/dashboard/dashboard_controller.dart';
 import 'features/employee/employee_dashboard_controller.dart';
 import 'features/menu/app_menu_controller.dart';
+import 'features/scanner/scan_coordinator.dart';
 import 'features/visitors/visitors_controller.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
-  // 1. Initialize app initializer
-  final initializer = AppInitializer();
-  await initializer.initialize();
-
-  // 2. Load server config
+  // 1. Load server config dari SharedPreferences
   final serverConfig = ServerConfigService();
   await serverConfig.init();
 
-  // 3. Set AppConfig.baseUrl
+  // 2. Set AppConfig.baseUrl SEBELUM ApiClient dibuat
   if (serverConfig.serverUrl != null && serverConfig.serverUrl!.isNotEmpty) {
     AppConfig.baseUrl = serverConfig.serverUrl!;
   }
 
-  // 4. Initialize CookieJar dengan persistent storage
-  final appDocDir = await getApplicationDocumentsDirectory();
+  // 3. Buat ApiClient — baseUrl sudah benar
+  final supportDir = await getApplicationSupportDirectory();
   final cookieJar = PersistCookieJar(
-    storage: FileStorage('${appDocDir.path}/.cookies/'),
+    ignoreExpires: false,
+    storage: FileStorage('${supportDir.path}/erpnext_cookies'),
   );
-
-  // 5. Initialize ApiClient (tanpa baseUrl di constructor — set via AppConfig)
   final apiClient = ApiClient(cookieJar: cookieJar);
 
-  // 6. Initialize storage & repository
-  final secureStorage = SecureSessionStorage();
+  final sessionStorage = SecureSessionStorage();
   final AuthRepository authRepository = AuthRepositoryImpl(
     apiClient: apiClient,
-    storage: secureStorage,
+    storage: sessionStorage,
   );
+  final MenuRepository menuRepository = MenuRepositoryImpl(apiClient: apiClient);
+  final OperationsRepository operationsRepository =
+      OperationsRepositoryImpl(apiClient);
 
   runApp(
     MultiProvider(
       providers: [
-        ChangeNotifierProvider<AppInitializer>.value(value: initializer),
-        ChangeNotifierProvider<ServerConfigService>.value(value: serverConfig),
-        // ApiClient bukan ChangeNotifier — pakai Provider biasa
         Provider<ApiClient>.value(value: apiClient),
-        // AuthRepository adalah abstract — expose via interface
+        Provider<ConnectivityService>(create: (_) => ConnectivityService()),
         Provider<AuthRepository>.value(value: authRepository),
-        // AuthRepositoryImpl sebagai ChangeNotifier
-        ChangeNotifierProvider<AuthRepositoryImpl>.value(
-          value: authRepository as AuthRepositoryImpl,
-        ),
+        Provider<MenuRepository>.value(value: menuRepository),
+        Provider<OperationsRepository>.value(value: operationsRepository),
+        ChangeNotifierProvider<ServerConfigService>.value(value: serverConfig),
+
         ChangeNotifierProvider<AuthController>(
           create: (context) => AuthController(
             authRepository: context.read<AuthRepository>(),
             apiClient: context.read<ApiClient>(),
           )..restoreSession(),
         ),
+
+        Provider<QrValidationService>(
+          create: (_) => QrValidationService(
+            activeSecrets: const ['vms-default-rotating-secret-v1'],
+          ),
+        ),
+
+        ChangeNotifierProvider<ScanCoordinator>(
+          create: (context) => ScanCoordinator(
+            context.read<OperationsRepository>(),
+            context.read<ConnectivityService>(),
+            context.read<QrValidationService>(),
+          ),
+        ),
+
+        ChangeNotifierProvider<VisitorsController>(
+          create: (context) =>
+              VisitorsController(context.read<OperationsRepository>()),
+        ),
+        ChangeNotifierProvider<ApprovalsController>(
+          create: (context) =>
+              ApprovalsController(context.read<OperationsRepository>()),
+        ),
+        ChangeNotifierProvider<ActivityController>(
+          create: (context) =>
+              ActivityController(context.read<OperationsRepository>()),
+        ),
         ChangeNotifierProvider<SettingsController>(
           create: (_) => SettingsController(),
         ),
-        ChangeNotifierProvider<AppMenuController>(
-          create: (context) => AppMenuController(
-            MenuRepositoryImpl(apiClient: context.read<ApiClient>()),
-          ),
-        ),
         ChangeNotifierProvider<DashboardController>(
-          create: (context) => DashboardController(
-            MenuRepositoryImpl(apiClient: context.read<ApiClient>()),
-          ),
-        ),
-        ChangeNotifierProvider<VisitorsController>(
-          create: (context) => VisitorsController(
-            OperationsRepositoryImpl(context.read<ApiClient>()),
-          ),
-        ),
-        ChangeNotifierProvider<ApprovalsController>(
-          create: (context) => ApprovalsController(
-            OperationsRepositoryImpl(context.read<ApiClient>()),
-          ),
-        ),
-        ChangeNotifierProvider<ActivityController>(
-          create: (context) => ActivityController(
-            OperationsRepositoryImpl(context.read<ApiClient>()),
-          ),
+          create: (context) =>
+              DashboardController(context.read<MenuRepository>()),
         ),
         ChangeNotifierProvider<EmployeeDashboardController>(
-          create: (context) => EmployeeDashboardController(
-            context.read<ApiClient>(),
-          ),
+          create: (context) =>
+              EmployeeDashboardController(context.read<ApiClient>()),
+        ),
+        ChangeNotifierProxyProvider<AuthController, AppMenuController>(
+          create: (context) =>
+              AppMenuController(context.read<MenuRepository>()),
+          update: (_, auth, menuController) {
+            menuController ??= AppMenuController(menuRepository);
+            menuController.bindAuth(auth);
+            return menuController;
+          },
         ),
       ],
       child: MobileVMSApp(
-        initializer: initializer,
         serverConfig: serverConfig,
         apiClient: apiClient,
         authRepository: authRepository,
