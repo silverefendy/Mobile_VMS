@@ -51,7 +51,8 @@ class AppTheme {
       filled: true,
       fillColor: Colors.grey.shade50,
     ),
-    cardTheme: CardTheme(
+    // Flutter 3.27+ gunakan CardThemeData, bukan CardTheme
+    cardTheme: CardThemeData(
       color: Colors.white,
       elevation: 2,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
@@ -103,7 +104,8 @@ class AppTheme {
       filled: true,
       fillColor: Colors.grey.shade800,
     ),
-    cardTheme: CardTheme(
+    // Flutter 3.27+ gunakan CardThemeData, bukan CardTheme
+    cardTheme: CardThemeData(
       color: Colors.grey.shade800,
       elevation: 2,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
