@@ -8,10 +8,9 @@ import 'core/server_config/server_config_service.dart';
 import 'domain/repositories/auth_repository.dart';
 import 'theme/app_theme.dart';
 
-/// Brand teal color — dipakai di seluruh app
-const kBrandTeal = Color(0xFF0D7490);
-const kBrandTealDark = Color(0xFF0A5F75);
-const kBrandTealLight = Color(0xFFE0F2F7);
+// Re-export agar file lain yang masih import '../../app.dart'
+// tidak perlu diubah satu per satu — cukup app.dart yang forward ke theme/colors.dart
+export 'theme/colors.dart';
 
 class MobileVMSApp extends StatefulWidget {
   const MobileVMSApp({
