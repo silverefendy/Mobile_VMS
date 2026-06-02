@@ -1,8 +1,6 @@
 import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
-import '../../app.dart';
-
 enum ServerConfigStatus { unconfigured, configured, validating, valid, invalid }
 
 class ServerConfigService extends ChangeNotifier {
@@ -15,23 +13,24 @@ class ServerConfigService extends ChangeNotifier {
   String? get serverUrl => _serverUrl;
   ServerConfigStatus get status => _status;
   String? get errorMessage => _errorMessage;
-  
-  /// Returns true ONLY if server URL has been tested AND connection test passed
-  /// This is stricter than isConfigured - only 'valid' status returns true
-  bool get isConfigured => _status == ServerConfigStatus.valid;
-  
-  /// Explicit getter for login readiness: URL configured + validated + connection test passed
-  bool get isReadyForLogin => isConfigured && (_serverUrl?.isNotEmpty ?? false);
+
+  /// isConfigured = true hanya jika URL sudah tersimpan DAN status valid/configured.
+  /// Status 'validating' TIDAK dianggap configured agar router tidak bingung
+  /// saat user sedang di tengah proses test koneksi.
+  bool get isConfigured =>
+      (_status == ServerConfigStatus.configured ||
+          _status == ServerConfigStatus.valid) &&
+      _serverUrl != null &&
+      _serverUrl!.isNotEmpty;
 
   Future<void> init() async {
     final prefs = await SharedPreferences.getInstance();
     _serverUrl = prefs.getString(_keyServerUrl);
-    // Only mark as configured if we have a URL, but don't assume it's valid
-    // User must still test connection to reach 'valid' status
     _status = _serverUrl != null && _serverUrl!.isNotEmpty
-        ? ServerConfigStatus.configured  // Has URL but not yet validated
+        ? ServerConfigStatus.configured
         : ServerConfigStatus.unconfigured;
-    _debugLog('init', 'serverUrl=$_serverUrl, status=$_status, isConfigured=$isConfigured, isReadyForLogin=$isReadyForLogin');
+    _debugLog('init',
+        'serverUrl=$_serverUrl, status=$_status, isConfigured=$isConfigured');
     notifyListeners();
   }
 
@@ -45,19 +44,23 @@ class ServerConfigService extends ChangeNotifier {
     }
 
     String formattedUrl = trimmed;
-    if (!formattedUrl.startsWith('http://') && !formattedUrl.startsWith('https://')) {
+    if (!formattedUrl.startsWith('http://') &&
+        !formattedUrl.startsWith('https://')) {
       formattedUrl = 'http://$formattedUrl';
     }
-    
-    // Remove trailing slash
+
+    // Hapus trailing slash
     if (formattedUrl.endsWith('/')) {
       formattedUrl = formattedUrl.substring(0, formattedUrl.length - 1);
     }
 
     _serverUrl = formattedUrl;
+    // Gunakan 'validating' — BUKAN configured, agar isConfigured tetap false
+    // selama user belum benar-benar menekan Save setelah test berhasil
     _status = ServerConfigStatus.validating;
     _errorMessage = null;
-    _debugLog('setServerUrl', 'url=$_serverUrl, status=$_status, isConfigured=$isConfigured');
+    _debugLog('setServerUrl',
+        'url=$_serverUrl, status=$_status, isConfigured=$isConfigured');
     notifyListeners();
 
     return true;
@@ -66,25 +69,24 @@ class ServerConfigService extends ChangeNotifier {
   void setStatus(ServerConfigStatus status, {String? errorMessage}) {
     _status = status;
     _errorMessage = errorMessage;
-    _debugLog('setStatus', 'newStatus=$status, errorMessage=$errorMessage, isConfigured=$isConfigured, isReadyForLogin=$isReadyForLogin');
+    _debugLog('setStatus',
+        'newStatus=$status, errorMessage=$errorMessage, isConfigured=$isConfigured');
     notifyListeners();
   }
 
   Future<void> saveServerUrl() async {
-    _debugLog('saveServerUrl', 'BEFORE SAVE - serverUrl=$_serverUrl, status=$_status, isConfigured=$isConfigured');
+    _debugLog('saveServerUrl',
+        'BEFORE SAVE - serverUrl=$_serverUrl, status=$_status, isConfigured=$isConfigured');
     if (_serverUrl == null) {
       _debugLog('saveServerUrl', 'NULL serverUrl - returning early');
       return;
     }
-    
+
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString(_keyServerUrl, _serverUrl!);
-    // Only mark as configured (ready for login) if status is valid
-    if (_status == ServerConfigStatus.valid) {
-      _debugLog('saveServerUrl', 'Saving valid config - status=$_status');
-    } else {
-      _debugLog('saveServerUrl', 'WARNING: Saving with non-valid status=$_status');
-    }
+    _status = ServerConfigStatus.configured;
+    _debugLog('saveServerUrl',
+        'AFTER SAVE - serverUrl=$_serverUrl, status=$_status, isConfigured=$isConfigured');
     notifyListeners();
   }
 
@@ -94,15 +96,8 @@ class ServerConfigService extends ChangeNotifier {
     _serverUrl = null;
     _status = ServerConfigStatus.unconfigured;
     _errorMessage = null;
-    _debugLog('clearConfiguration', 'Cleared - status=$_status, isConfigured=$isConfigured');
-    notifyListeners();
-  }
-  
-  /// Clear configuration if connection test fails repeatedly
-  /// Useful for forcing user back to setup screen
-  Future<void> markAsInvalidAndClear({String? reason}) async {
-    _status = ServerConfigStatus.invalid;
-    _errorMessage = reason ?? 'Connection validation failed';
+    _debugLog('clearConfiguration',
+        'Cleared - status=$_status, isConfigured=$isConfigured');
     notifyListeners();
   }
 
