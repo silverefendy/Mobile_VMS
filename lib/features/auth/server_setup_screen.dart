@@ -23,10 +23,27 @@ class _ServerSetupScreenState extends State<ServerSetupScreen> {
   bool _testSuccess = false;
   String? _testMessage;
   String? _errorDetails;
-
-  // Status indikator koneksi
-  // null = belum test, true = connected, false = gagal
   bool? _connectionStatus;
+
+  @override
+  void initState() {
+    super.initState();
+    // ✅ FIX 1: Isi text field dengan URL yang sudah tersimpan sebelumnya
+    // Sehingga user tidak perlu ketik ulang saat buka setup screen lagi
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final serverConfig = context.read<ServerConfigService>();
+      final savedUrl = serverConfig.serverUrl;
+      if (savedUrl != null && savedUrl.isNotEmpty) {
+        _urlController.text = savedUrl;
+        // Tandai sebagai sudah terkonfigurasi agar tombol Save langsung aktif
+        setState(() {
+          _testSuccess = true;
+          _connectionStatus = true;
+          _testMessage = 'URL tersimpan dari sesi sebelumnya. Test ulang jika perlu.';
+        });
+      }
+    });
+  }
 
   @override
   void dispose() {
@@ -71,8 +88,6 @@ class _ServerSetupScreenState extends State<ServerSetupScreen> {
     });
 
     if (result.success) {
-      // ✅ PENTING: Set AppConfig.baseUrl saat test berhasil
-      // agar indikator koneksi dan login bisa langsung menggunakan URL yang benar
       AppConfig.baseUrl = serverConfig.serverUrl!;
       if (mounted) {
         context.read<ApiClient>().updateBaseUrl(serverConfig.serverUrl!);
@@ -98,16 +113,19 @@ class _ServerSetupScreenState extends State<ServerSetupScreen> {
             mainAxisSize: MainAxisSize.min,
             children: [
               Text(_errorDetails!,
-                  style:
-                      const TextStyle(fontFamily: 'monospace', fontSize: 12)),
+                  style: const TextStyle(
+                      fontFamily: 'monospace', fontSize: 12)),
               const SizedBox(height: 16),
               const Text('Tips:',
                   style: TextStyle(fontWeight: FontWeight.bold)),
               const SizedBox(height: 8),
               const Text('• Pastikan URL benar dan server aktif'),
-              const Text('• Untuk HTTP lokal, gunakan format http://IP:port'),
-              const Text('• Untuk HTTPS, pastikan sertifikat valid'),
-              const Text('• Visitor Management API harus terinstall'),
+              const Text(
+                  '• Untuk HTTP lokal, gunakan format http://IP:port'),
+              const Text(
+                  '• Untuk HTTPS, pastikan sertifikat valid'),
+              const Text(
+                  '• Visitor Management API harus terinstall'),
             ],
           ),
         ),
@@ -115,8 +133,8 @@ class _ServerSetupScreenState extends State<ServerSetupScreen> {
           TextButton.icon(
             onPressed: () {
               Clipboard.setData(ClipboardData(text: _errorDetails!));
-              ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(content: Text('Error details copied')));
+              ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+                  content: Text('Error details copied')));
             },
             icon: const Icon(Icons.copy, size: 18),
             label: const Text('Copy'),
@@ -131,30 +149,47 @@ class _ServerSetupScreenState extends State<ServerSetupScreen> {
 
   Future<void> _save() async {
     final serverConfig = context.read<ServerConfigService>();
-    
-    // Validasi: harus sudah test dan berhasil
-    if (serverConfig.status != ServerConfigStatus.valid) {
+
+    // Jika URL di field sama dengan yang sudah tersimpan dan status configured,
+    // langsung lanjutkan tanpa perlu test ulang
+    final currentUrl = _urlController.text.trim();
+    final savedUrl = serverConfig.serverUrl ?? '';
+    final isSameUrl = currentUrl == savedUrl ||
+        'http://$currentUrl' == savedUrl ||
+        currentUrl == savedUrl.replaceFirst('http://', '');
+
+    if (isSameUrl && serverConfig.isConfigured) {
+      // URL tidak berubah — langsung set AppConfig dan lanjutkan
+      AppConfig.baseUrl = savedUrl;
+      if (mounted) {
+        context.read<ApiClient>().updateBaseUrl(savedUrl);
+      }
+      if (mounted) {
+        Navigator.of(context).pushReplacementNamed('/login');
+      }
+      return;
+    }
+
+    // URL baru — harus sudah test dan berhasil
+    if (!_testSuccess) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content: Text('✅ Test koneksi harus berhasil terlebih dahulu'),
+          content:
+              Text('Test koneksi harus berhasil terlebih dahulu'),
           backgroundColor: Colors.orange,
         ),
       );
       return;
     }
 
-    // Update AppConfig dan ApiClient SEBELUM notifyListeners()
-    // agar router redirect ke /login sudah punya URL yang benar
     final newUrl = serverConfig.serverUrl!;
     AppConfig.baseUrl = newUrl;
     if (mounted) {
       context.read<ApiClient>().updateBaseUrl(newUrl);
     }
 
-    // Baru simpan — ini trigger notifyListeners() dan router redirect
     await serverConfig.saveServerUrl();
-    
-    // Redirect ke login
+
     if (mounted) {
       Navigator.of(context).pushReplacementNamed('/login');
     }
@@ -163,8 +198,8 @@ class _ServerSetupScreenState extends State<ServerSetupScreen> {
   @override
   Widget build(BuildContext context) {
     final serverConfig = context.watch<ServerConfigService>();
-    // ✅ Tombol Save hanya enable jika status valid (sudah test & sukses)
-    final canSave = serverConfig.status == ServerConfigStatus.valid;
+    // Tombol Save aktif jika: sudah test berhasil ATAU URL tidak berubah dari yang tersimpan
+    final canSave = _testSuccess || serverConfig.isConfigured;
 
     return Scaffold(
       backgroundColor: const Color(0xFFF0F9FF),
@@ -190,7 +225,8 @@ class _ServerSetupScreenState extends State<ServerSetupScreen> {
                           borderRadius: BorderRadius.circular(22),
                           boxShadow: [
                             BoxShadow(
-                                color: kBrandTeal.withValues(alpha: 0.3),
+                                color:
+                                    kBrandTeal.withValues(alpha: 0.3),
                                 blurRadius: 20,
                                 offset: const Offset(0, 8)),
                           ],
@@ -211,35 +247,39 @@ class _ServerSetupScreenState extends State<ServerSetupScreen> {
                     const SizedBox(height: 6),
                     const Center(
                       child: Text(
-                        'Masukkan URL server ERPNext Anda',
+                        'Konfigurasi URL Server ERPNext',
                         textAlign: TextAlign.center,
-                        style:
-                            TextStyle(fontSize: 13, color: Color(0xFF64748B)),
+                        style: TextStyle(
+                            fontSize: 13, color: Color(0xFF64748B)),
                       ),
                     ),
                     const SizedBox(height: 32),
 
-                    // URL field dengan indikator koneksi di suffix
+                    // ✅ FIX 2: hintText hanya contoh format, bukan nilai default
+                    // Nilai real diisi dari savedUrl di initState
                     TextFormField(
                       controller: _urlController,
                       onChanged: (_) {
-                        // Reset status koneksi saat URL diubah
                         if (_connectionStatus != null) {
-                          setState(() => _connectionStatus = null);
+                          setState(() {
+                            _connectionStatus = null;
+                            _testSuccess = false;
+                            _testMessage = null;
+                          });
                         }
                       },
                       decoration: InputDecoration(
                         labelText: 'Server URL',
-                        hintText: 'http://10.1.0.30:8001',
+                        // ✅ hintText yang jelas menunjukkan ini hanya CONTOH FORMAT
+                        hintText: 'Contoh: http://192.168.1.10:8001',
                         prefixIcon: const Icon(Icons.link_rounded),
-                        // Indikator lampu di kanan field
                         suffixIcon: _buildConnectionIndicator(),
                         filled: true,
                         fillColor: Colors.white,
                         border: OutlineInputBorder(
                             borderRadius: BorderRadius.circular(12),
-                            borderSide:
-                                const BorderSide(color: Color(0xFFE2E8F0))),
+                            borderSide: const BorderSide(
+                                color: Color(0xFFE2E8F0))),
                         enabledBorder: OutlineInputBorder(
                             borderRadius: BorderRadius.circular(12),
                             borderSide: BorderSide(
@@ -248,7 +288,8 @@ class _ServerSetupScreenState extends State<ServerSetupScreen> {
                                   : _connectionStatus!
                                       ? Colors.green.shade400
                                       : Colors.red.shade400,
-                              width: _connectionStatus != null ? 2 : 1,
+                              width:
+                                  _connectionStatus != null ? 2 : 1,
                             )),
                         focusedBorder: OutlineInputBorder(
                             borderRadius: BorderRadius.circular(12),
@@ -271,7 +312,7 @@ class _ServerSetupScreenState extends State<ServerSetupScreen> {
                     ),
                     const SizedBox(height: 16),
 
-                    // Banner status koneksi
+                    // Banner status
                     if (_isTesting)
                       _StatusBanner(
                         color: Colors.blue.shade50,
@@ -289,40 +330,46 @@ class _ServerSetupScreenState extends State<ServerSetupScreen> {
                       _StatusBanner(
                         color: _testSuccess
                             ? Colors.green.shade50
-                            : Colors.red.shade50,
+                            : Colors.orange.shade50,
                         borderColor: _testSuccess
                             ? Colors.green.shade200
-                            : Colors.red.shade200,
+                            : Colors.orange.shade200,
                         icon: Icon(
                           _testSuccess
                               ? Icons.check_circle_rounded
-                              : Icons.error_outline_rounded,
-                          color: _testSuccess ? Colors.green : Colors.red,
+                              : Icons.info_outline_rounded,
+                          color: _testSuccess
+                              ? Colors.green
+                              : Colors.orange,
                           size: 20,
                         ),
                         text: _testMessage!,
                         textColor: _testSuccess
                             ? Colors.green.shade700
-                            : Colors.red.shade700,
-                        trailing: !_testSuccess && _errorDetails != null
-                            ? IconButton(
-                                icon: const Icon(Icons.info_outline,
-                                    size: 18, color: Color(0xFF64748B)),
-                                onPressed: _showErrorDetails,
-                                tooltip: 'Lihat detail error',
-                              )
-                            : null,
+                            : Colors.orange.shade700,
+                        trailing:
+                            !_testSuccess && _errorDetails != null
+                                ? IconButton(
+                                    icon: const Icon(
+                                        Icons.info_outline,
+                                        size: 18,
+                                        color: Color(0xFF64748B)),
+                                    onPressed: _showErrorDetails,
+                                    tooltip: 'Lihat detail error',
+                                  )
+                                : null,
                       ),
 
                     const SizedBox(height: 24),
 
-                    // Test button - HANYA untuk test, tidak auto-proceed
+                    // Tombol Test Koneksi
                     OutlinedButton(
                       onPressed: _isTesting ? null : _testConnection,
                       style: OutlinedButton.styleFrom(
                         foregroundColor: kBrandTeal,
                         side: const BorderSide(color: kBrandTeal),
-                        padding: const EdgeInsets.symmetric(vertical: 14),
+                        padding:
+                            const EdgeInsets.symmetric(vertical: 14),
                         shape: RoundedRectangleBorder(
                             borderRadius: BorderRadius.circular(12)),
                       ),
@@ -331,32 +378,37 @@ class _ServerSetupScreenState extends State<ServerSetupScreen> {
                               width: 22,
                               height: 22,
                               child: CircularProgressIndicator(
-                                  strokeWidth: 2, color: kBrandTeal))
+                                  strokeWidth: 2,
+                                  color: kBrandTeal))
                           : const Text('Test Koneksi',
-                              style: TextStyle(fontWeight: FontWeight.w600)),
+                              style: TextStyle(
+                                  fontWeight: FontWeight.w600)),
                     ),
                     const SizedBox(height: 12),
 
-                    // Save button - HANYA enable setelah test berhasil
+                    // Tombol Simpan & Lanjutkan
                     FilledButton(
                       onPressed: canSave ? _save : null,
                       style: FilledButton.styleFrom(
-                        backgroundColor: canSave ? kBrandTeal : Colors.grey,
-                        padding: const EdgeInsets.symmetric(vertical: 14),
+                        backgroundColor:
+                            canSave ? kBrandTeal : Colors.grey,
+                        padding:
+                            const EdgeInsets.symmetric(vertical: 14),
                         shape: RoundedRectangleBorder(
                             borderRadius: BorderRadius.circular(12)),
                       ),
                       child: const Text('Simpan & Lanjutkan',
                           style: TextStyle(
-                              fontSize: 15, fontWeight: FontWeight.w700)),
+                              fontSize: 15,
+                              fontWeight: FontWeight.w700)),
                     ),
-                    
-                    // Helper text
-                    if (!canSave && _testSuccess == false)
+
+                    // Helper text jika belum bisa save
+                    if (!canSave)
                       Padding(
                         padding: const EdgeInsets.only(top: 8),
                         child: Text(
-                          '💡 Klik "Test Koneksi" dulu untuk memvalidasi URL',
+                          'Klik "Test Koneksi" dulu untuk memvalidasi URL',
                           style: TextStyle(
                             fontSize: 11,
                             color: Colors.grey.shade600,
@@ -375,7 +427,6 @@ class _ServerSetupScreenState extends State<ServerSetupScreen> {
     );
   }
 
-  /// Indikator lampu di sebelah kanan field URL
   Widget? _buildConnectionIndicator() {
     if (_isTesting) {
       return const Padding(
@@ -383,13 +434,16 @@ class _ServerSetupScreenState extends State<ServerSetupScreen> {
         child: SizedBox(
           width: 16,
           height: 16,
-          child: CircularProgressIndicator(strokeWidth: 2, color: kBrandTeal),
+          child: CircularProgressIndicator(
+              strokeWidth: 2, color: kBrandTeal),
         ),
       );
     }
     if (_connectionStatus == null) return null;
     return Tooltip(
-      message: _connectionStatus! ? 'Terhubung ke server' : 'Tidak dapat terhubung',
+      message: _connectionStatus!
+          ? 'Terhubung ke server'
+          : 'Tidak dapat terhubung',
       child: Padding(
         padding: const EdgeInsets.all(14),
         child: Container(
@@ -397,10 +451,13 @@ class _ServerSetupScreenState extends State<ServerSetupScreen> {
           height: 14,
           decoration: BoxDecoration(
             shape: BoxShape.circle,
-            color: _connectionStatus! ? Colors.green : Colors.red,
+            color:
+                _connectionStatus! ? Colors.green : Colors.red,
             boxShadow: [
               BoxShadow(
-                color: (_connectionStatus! ? Colors.green : Colors.red)
+                color: (_connectionStatus!
+                        ? Colors.green
+                        : Colors.red)
                     .withValues(alpha: 0.5),
                 blurRadius: 6,
                 spreadRadius: 1,
@@ -413,7 +470,6 @@ class _ServerSetupScreenState extends State<ServerSetupScreen> {
   }
 }
 
-/// Widget banner status yang reusable
 class _StatusBanner extends StatelessWidget {
   const _StatusBanner({
     required this.color,
@@ -445,7 +501,9 @@ class _StatusBanner extends StatelessWidget {
           icon,
           const SizedBox(width: 8),
           Expanded(
-            child: Text(text, style: TextStyle(color: textColor, fontSize: 13)),
+            child: Text(text,
+                style:
+                    TextStyle(color: textColor, fontSize: 13)),
           ),
           if (trailing != null) trailing!,
         ],
