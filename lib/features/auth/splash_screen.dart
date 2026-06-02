@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../../core/auth/auth_controller.dart';
 import '../../core/init/app_initializer.dart';
-import '../../config/theme.dart';
 import '../../theme/colors.dart';
 
 class SplashScreen extends StatelessWidget {
@@ -60,7 +59,6 @@ class SplashScreen extends StatelessWidget {
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
-                // Logo placeholder
                 const Icon(Icons.security, size: 80, color: Colors.white),
                 const SizedBox(height: 24),
                 const Text(
@@ -80,7 +78,6 @@ class SplashScreen extends StatelessWidget {
                 ),
                 const SizedBox(height: 14),
                 Text(
-                  // ⭐ Updated status messages
                   initializer.isInitializing
                       ? 'Initializing...'
                       : auth.restoring
